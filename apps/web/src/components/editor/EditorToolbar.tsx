@@ -11,6 +11,7 @@ import {
 } from 'react-icons/io5'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEditorToolbarDock } from '@/hooks/useEditorToolbarDock'
+import { useEditorToolbarStore } from '@/stores/editorToolbar'
 import { EditorStyleMenu } from './EditorStyleMenu'
 import {
   COLORS, HIGHLIGHT_COLORS, AlignLeftIcon, AlignCenterIcon, AlignRightIcon, ColumnsIcon,
@@ -20,17 +21,6 @@ interface EditorToolbarProps {
   editor: Editor
   onInsertImage: () => void
   isUploadingImage: boolean
-}
-
-const TOOLBAR_PREFERENCE_KEY = 'onyka-editor-toolbar-collapsed'
-
-function readCollapsedPreference(): { desktop: boolean; mobile: boolean } {
-  try {
-    const saved = JSON.parse(localStorage.getItem(TOOLBAR_PREFERENCE_KEY) || '{}')
-    return { desktop: saved?.desktop === true, mobile: saved?.mobile === true }
-  } catch {
-    return { desktop: false, mobile: false }
-  }
 }
 
 interface ToolButtonProps {
@@ -78,9 +68,9 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
   const urlId = useId()
   const reducedMotion = useReducedMotion()
   const mobile = useIsMobile()
-  const [collapsedModes, setCollapsedModes] = useState(readCollapsedPreference)
-  const collapsed = collapsedModes[mobile ? 'mobile' : 'desktop']
-  const { toolbarRef, docked, viewport } = useEditorToolbarDock(editor, mobile)
+  const collapsed = useEditorToolbarStore((state) => state.collapsed[mobile ? 'mobile' : 'desktop'])
+  const setCollapsed = useEditorToolbarStore((state) => state.setCollapsed)
+  const { toolbarRef, docked, viewport } = useEditorToolbarDock(editor, mobile, !collapsed)
   const [expanded, setExpanded] = useState(false)
   const [mobileTab, setMobileTab] = useState<'format' | 'insert'>('insert')
   const [showLink, setShowLink] = useState(false)
@@ -162,23 +152,21 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
   }
 
   const toggleCollapsed = () => {
-    const next = { ...collapsedModes, [mobile ? 'mobile' : 'desktop']: !collapsed }
-    setCollapsedModes(next)
+    setCollapsed(mobile ? 'mobile' : 'desktop', !collapsed)
     setExpanded(false)
     setShowLink(false)
-    try { localStorage.setItem(TOOLBAR_PREFERENCE_KEY, JSON.stringify(next)) } catch { /* Keep the preference for this session. */ }
     if (docked) editor.commands.focus()
-    else if (!editor.isFocused) requestAnimationFrame(() => toolbarRef.current?.querySelector<HTMLButtonElement>('[data-toolbar-toggle]')?.focus())
+    else if (!mobile && !editor.isFocused) requestAnimationFrame(() => toolbarRef.current?.querySelector<HTMLButtonElement>('[data-toolbar-toggle]')?.focus())
   }
 
   const toolbar = (
     <div ref={toolbarRef} className={`editor-format-toolbar${docked ? ' editor-format-docked' : ''}${collapsed ? ' editor-format-collapsed' : ''}`}
       data-mobile={mobile || undefined}
       style={docked ? {
-        top: viewport.top - 6,
-        left: collapsed ? viewport.left + viewport.width - Math.min(190, viewport.width - 12) - 6 : viewport.left + 6,
-        width: collapsed ? Math.min(190, viewport.width - 12) : viewport.width - 12,
-        paddingBottom: viewport.inset < 80 ? 'env(safe-area-inset-bottom, 0px)' : 0,
+        bottom: viewport.inset,
+        left: viewport.left + 6,
+        width: viewport.width - 12,
+        paddingBottom: viewport.keyboardOpen ? 0 : 'env(safe-area-inset-bottom, 0px)',
         '--editor-tools-max-height': `${Math.max(96, Math.min(360, viewport.height * 0.55))}px`,
         '--editor-style-max-height': `${Math.max(96, viewport.height - 80)}px`,
       } as CSSProperties : undefined}
@@ -380,6 +368,8 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
       )}
     </div>
   )
+
+  if (mobile && collapsed) return null
 
   return docked
     ? <><div className="editor-format-placeholder" aria-hidden="true" />{createPortal(toolbar, document.body)}</>

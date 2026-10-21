@@ -203,7 +203,8 @@
         "pink": "Pink"
       },
       "show": "Show tools",
-      "hide": "Collapse toolbar"
+      "hide": "Collapse toolbar",
+      "restore_hint": "Reopen your tools up here"
     }
   },
   "notes": {

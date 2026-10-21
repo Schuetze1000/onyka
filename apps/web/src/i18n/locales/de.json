@@ -203,7 +203,8 @@
         "pink": "Rosa"
       },
       "show": "Werkzeuge anzeigen",
-      "hide": "Werkzeugleiste einklappen"
+      "hide": "Werkzeugleiste einklappen",
+      "restore_hint": "Werkzeuge hier oben wieder öffnen"
     }
   },
   "notes": {

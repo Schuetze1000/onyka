@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { preloadAllFonts } from '@/utils/fontLoader'
 import { useTranslation } from 'react-i18next'
+import type { Editor } from '@tiptap/react'
 import {
   IoCheckmarkOutline,
   IoSyncOutline,
@@ -16,6 +17,7 @@ import {
   IoDownloadOutline,
   IoLockClosed,
   IoLockOpen,
+  IoOptionsOutline,
 } from 'react-icons/io5'
 import type { NoteWithTags, Tag, NotePage } from '@onyka/shared'
 import { useAutoSave } from '@/hooks'
@@ -33,6 +35,7 @@ import { useThemeStore, EDITOR_FONT_SIZES, EDITOR_FONT_FAMILIES } from '@/stores
 import { useAuthStore } from '@/stores/auth'
 import { useCommentsStore } from '@/stores/comments'
 import { usePagesStore } from '@/stores/pages'
+import { useEditorToolbarStore } from '@/stores/editorToolbar'
 import { WordCounter, countWords } from './WordCounter'
 import { FocusTimer } from './FocusTimer'
 import { formatNoteDate, formatTimeAgo } from '@/utils/format'
@@ -75,6 +78,27 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   const { t, i18n } = useTranslation()
   const breakpoint = useBreakpoint()
   const isCompact = breakpoint !== 'desktop' // mobile + tablet
+  const toolbarCollapsed = useEditorToolbarStore((state) => state.collapsed.mobile)
+  const setToolbarCollapsed = useEditorToolbarStore((state) => state.setCollapsed)
+  const [showToolbarHint, setShowToolbarHint] = useState(false)
+  const previousToolbarCollapsed = useRef(toolbarCollapsed)
+  const editorInstanceRef = useRef<Editor | null>(null)
+  const rememberEditor = useCallback((editor: Editor | null) => { editorInstanceRef.current = editor }, [])
+
+  useEffect(() => {
+    const justCollapsed = toolbarCollapsed && !previousToolbarCollapsed.current
+    previousToolbarCollapsed.current = toolbarCollapsed
+    if (!toolbarCollapsed || breakpoint !== 'mobile') { setShowToolbarHint(false); return }
+    if (!justCollapsed) return
+    setShowToolbarHint(true)
+    const timer = setTimeout(() => setShowToolbarHint(false), 3000)
+    return () => clearTimeout(timer)
+  }, [toolbarCollapsed, breakpoint])
+
+  const toggleMobileToolbar = () => {
+    setToolbarCollapsed('mobile', !toolbarCollapsed)
+    requestAnimationFrame(() => editorInstanceRef.current?.commands.focus())
+  }
   const [localTitle, setLocalTitle] = useState(note.title)
   const [localContent, setLocalContent] = useState(note.content)
   const [localTags, setLocalTags] = useState<Tag[]>(note.tags)
@@ -518,6 +542,22 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
           </div>
 
           <div className="flex items-center gap-0.5 flex-shrink-0">
+            {breakpoint === 'mobile' && toolbarCollapsed && !activePage?.isLocked && (
+              <div className="relative">
+                <button type="button" onClick={toggleMobileToolbar}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className="editor-toolbar-return" aria-label={t('editor.toolbar.show')}
+                  title={t('editor.toolbar.show')} aria-expanded="false">
+                  <IoOptionsOutline className="w-4 h-4" aria-hidden="true" />
+                </button>
+                {showToolbarHint && (
+                  <div role="status" className="editor-toolbar-return-hint animate-fade-in floating-panel">
+                    {t('editor.toolbar.restore_hint')}
+                  </div>
+                )}
+              </div>
+            )}
             <div
               className={`flex items-center gap-1 px-2 text-[11px] font-medium transition-all duration-300 ${statusConfig.className}`}
             >
@@ -697,6 +737,13 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
                 {showOptionsMenu && (
                   <div className="absolute right-0 top-full mt-1 w-52 border rounded-lg py-1 z-50 floating-panel">
+                    {breakpoint === 'mobile' && !activePage?.isLocked && (
+                      <button type="button" onClick={() => { setShowOptionsMenu(false); toggleMobileToolbar() }}
+                        className="w-full flex items-center gap-2 px-3 h-11 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors">
+                        <IoOptionsOutline className="w-4 h-4" aria-hidden="true" />
+                        <span>{t(toolbarCollapsed ? 'editor.toolbar.show' : 'editor.toolbar.hide')}</span>
+                      </button>
+                    )}
                     {isCompact && (
                       <>
                         <button
@@ -843,6 +890,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
           onChange={handleContentChange}
           placeholder={t('editor.placeholder')}
           readOnly={activePage?.isLocked ?? false}
+          onEditorReady={rememberEditor}
         />
       </div>
 

@@ -1,4 +1,4 @@
-import { useEditor, EditorContent } from '@tiptap/react'
+import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import Highlight from '@tiptap/extension-highlight'
@@ -182,9 +182,10 @@ interface FluidEditorProps {
   onChange: (content: string) => void
   placeholder?: string
   readOnly?: boolean
+  onEditorReady?: (editor: Editor | null) => void
 }
 
-export const FluidEditor = memo(function FluidEditor({ content, onChange, placeholder = 'Start writing...', readOnly = false }: FluidEditorProps) {
+export const FluidEditor = memo(function FluidEditor({ content, onChange, placeholder = 'Start writing...', readOnly = false, onEditorReady }: FluidEditorProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [showSlashMenu, setShowSlashMenu] = useState(false)
@@ -902,6 +903,11 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
     },
     [editor, handleImageUpload]
   )
+
+  useEffect(() => {
+    onEditorReady?.(editor)
+    return () => { onEditorReady?.(null) }
+  }, [editor, onEditorReady])
 
   const filteredSlashItems = showSlashMenu
     ? SLASH_MENU_ITEMS.filter(

@@ -2,19 +2,23 @@ import { useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 
 interface DockViewport {
-  top: number
   left: number
   width: number
   height: number
   inset: number
+  keyboardOpen: boolean
+}
+
+interface KeyboardGeometry extends EventTarget {
+  boundingRect: DOMRectReadOnly
 }
 
 /** Keep editor tools inside the visible viewport, including above the soft keyboard. */
-export function useEditorToolbarDock(editor: Editor, mobile: boolean) {
+export function useEditorToolbarDock(editor: Editor, mobile: boolean, enabled = true) {
   const toolbarRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState(false)
-  const [viewport, setViewport] = useState<DockViewport>({ top: 0, left: 0, width: 0, height: 0, inset: 0 })
-  const docked = mobile && editing && viewport.width > 0
+  const [viewport, setViewport] = useState<DockViewport>({ left: 0, width: 0, height: 0, inset: 0, keyboardOpen: false })
+  const docked = mobile && enabled && editing && viewport.width > 0
 
   useEffect(() => {
     if (!mobile) return
@@ -45,53 +49,68 @@ export function useEditorToolbarDock(editor: Editor, mobile: boolean) {
   useEffect(() => {
     if (!mobile) return
     const visual = window.visualViewport
+    const keyboard = (navigator as Navigator & { virtualKeyboard?: KeyboardGeometry }).virtualKeyboard
+    let restingHeight = document.documentElement.clientHeight
     let frame = 0
     const measure = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        const top = (visual?.offsetTop || 0) + (visual?.height || window.innerHeight)
+        const layoutHeight = document.documentElement.clientHeight
+        const width = visual?.width || window.innerWidth
+        const height = visual?.height || window.innerHeight
+        const visualBottom = Math.min(layoutHeight, (visual?.offsetTop || 0) + height)
+        const keyboardRect = keyboard?.boundingRect
+        const hasGeometry = Boolean(keyboardRect && keyboardRect.height > 0 && keyboardRect.width >= width * 0.75)
+        const visibleBottom = hasGeometry ? Math.min(visualBottom, keyboardRect!.top) : visualBottom
+        const inset = Math.max(0, layoutHeight - visibleBottom)
+        restingHeight = Math.max(restingHeight, layoutHeight)
         setViewport({
-          top,
           left: visual?.offsetLeft || 0,
-          width: visual?.width || window.innerWidth,
-          height: visual?.height || window.innerHeight,
-          inset: Math.max(0, Math.max(document.documentElement.clientHeight, window.innerHeight) - top),
+          width,
+          height: Math.min(height, visibleBottom - (visual?.offsetTop || 0)),
+          inset,
+          keyboardOpen: hasGeometry || inset > 100 || restingHeight - height > 100,
         })
       })
     }
     measure()
     visual?.addEventListener('resize', measure)
     visual?.addEventListener('scroll', measure)
+    keyboard?.addEventListener('geometrychange', measure)
     window.addEventListener('resize', measure)
     return () => {
       cancelAnimationFrame(frame)
       visual?.removeEventListener('resize', measure)
       visual?.removeEventListener('scroll', measure)
+      keyboard?.removeEventListener('geometrychange', measure)
       window.removeEventListener('resize', measure)
     }
   }, [mobile])
 
   useEffect(() => {
-    if (!docked) return
+    if (!mobile || !editing) return
     const editorRoot = editor.view.dom.closest<HTMLElement>('.fluid-editor')
     return () => { editorRoot?.style.removeProperty('--editor-dock-space') }
-  }, [docked, editor])
+  }, [mobile, editing, editor])
 
   useEffect(() => {
-    if (!docked) return
+    if (!mobile || !editing) return
     let frame = 0
     const editorRoot = editor.view.dom.closest<HTMLElement>('.fluid-editor')
     const revealCaret = () => {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
-        if (editor.isDestroyed || !toolbarRef.current) return
-        editorRoot?.style.setProperty('--editor-dock-space', `${viewport.inset + toolbarRef.current.offsetHeight + 18}px`)
+        if (editor.isDestroyed) return
+        const toolbarHeight = docked && toolbarRef.current ? toolbarRef.current.offsetHeight : 0
+        editorRoot?.style.setProperty('--editor-dock-space', `${viewport.inset + toolbarHeight + 18}px`)
         if (!editor.isFocused) return
         const surface = editor.view.dom.closest<HTMLElement>('.editor-writing-surface')
         if (!surface) return
         const caret = editor.view.coordsAtPos(editor.state.selection.head)
         const top = surface.getBoundingClientRect().top + 8
-        const bottom = toolbarRef.current.getBoundingClientRect().top - 12
+        const bottom = (docked && toolbarRef.current
+          ? toolbarRef.current.getBoundingClientRect().top
+          : document.documentElement.clientHeight - viewport.inset) - 12
         if (bottom <= top) return
         if (caret.bottom > bottom) surface.scrollTop += caret.bottom - bottom
         else if (caret.top < top) surface.scrollTop -= top - caret.top
@@ -108,7 +127,7 @@ export function useEditorToolbarDock(editor: Editor, mobile: boolean) {
       editor.off('selectionUpdate', revealCaret)
       editor.off('update', revealCaret)
     }
-  }, [docked, editor, viewport])
+  }, [docked, mobile, editing, editor, viewport])
 
   return { toolbarRef, docked, viewport }
 }

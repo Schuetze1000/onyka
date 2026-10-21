@@ -203,7 +203,8 @@
         "pink": "Rose"
       },
       "show": "Afficher les outils",
-      "hide": "Replier la barre d’outils"
+      "hide": "Replier la barre d’outils",
+      "restore_hint": "Rouvrez les outils ici en haut"
     }
   },
   "notes": {

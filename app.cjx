@@ -1,0 +1,10 @@
+process.env.NODE_ENV = 'production';
+
+if (typeof process.env.PORT === 'undefined') {
+  process.env.PORT = '3001';
+}
+
+import('./apps/server/dist/index.js').catch((error) => {
+  console.error('Onyka konnte nicht gestartet werden:', error);
+  process.exit(1);
+});

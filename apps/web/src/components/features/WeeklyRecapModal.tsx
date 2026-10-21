@@ -36,7 +36,7 @@ export function WeeklyRecapModal({ isOpen, recap, onDismiss }: WeeklyRecapModalP
   const formatWeekRange = (weekStart: string, weekEnd: string): string => {
     const start = new Date(weekStart)
     const end = new Date(weekEnd)
-    const locale = i18n.language === 'fr' ? 'fr-FR' : 'en-US'
+    const locale = i18n.language === 'de' ? 'de-DE' : i18n.language === 'fr' ? 'fr-FR' : 'en-US'
 
     const startStr = start.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
     const endStr = end.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' })

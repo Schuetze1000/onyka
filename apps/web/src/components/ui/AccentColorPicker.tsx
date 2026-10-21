@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { IoCheckmarkOutline, IoColorPaletteOutline } from 'react-icons/io5'
 import { useThemeStore, ACCENT_COLORS } from '@/stores/theme'
 
@@ -8,6 +9,7 @@ interface AccentColorPickerProps {
 }
 
 export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps) {
+  const { t } = useTranslation()
   const { accentColor, setAccentColor, theme } = useThemeStore()
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -99,7 +101,7 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
           style={{ background: currentHex }}
         />
         <span className="text-[13px] font-medium text-[var(--color-text-primary)]">
-          Couleur du thème
+          {t('theme.color_picker_title')}
         </span>
       </div>
 
@@ -122,7 +124,7 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
                   style={{
                     background: `linear-gradient(135deg, ${colorHex} 0%, ${adjustColor(colorHex, -20)} 100%)`
                   }}
-                  title={color.name}
+                  title={t(`theme.colors.${color.id}`)}
                 >
                   {/* Shine effect */}
                   <div className="absolute inset-0 rounded-lg overflow-hidden">
@@ -138,7 +140,7 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
 
                   {/* Hover tooltip */}
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-md text-[10px] font-medium text-[var(--color-text-primary)] whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-lg">
-                    {color.name}
+                    {t(`theme.colors.${color.id}`)}
                     <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-[var(--color-bg-primary)] border-r border-b border-[var(--color-border)] rotate-45" />
                   </div>
                 </button>
@@ -151,7 +153,7 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
       {/* Current selection footer */}
       <div className="mt-5 pt-3 border-t border-[var(--color-border-subtle)] flex items-center justify-between">
         <span className="text-[9px] text-[var(--color-text-tertiary)] uppercase tracking-wider font-medium">
-          Actif
+          {t('theme.selected')}
         </span>
         <div className="flex items-center gap-1.5">
           <div
@@ -161,7 +163,7 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
             }}
           />
           <span className="text-[11px] font-medium text-[var(--color-text-primary)]">
-            {currentColor?.name}
+            {currentColor && t(`theme.colors.${currentColor.id}`)}
           </span>
         </div>
       </div>
@@ -183,14 +185,14 @@ export function AccentColorPicker({ collapsed = false }: AccentColorPickerProps)
             : 'w-8 h-8 rounded-xl bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-bg-elevated)]'
           }
         `}
-        aria-label="Choose accent color"
-        title={collapsed ? undefined : 'Couleur du thème'}
+        aria-label={t('theme.color_picker_title')}
+        title={collapsed ? undefined : t('theme.color_picker_title')}
       >
         <IoColorPaletteOutline className={`${collapsed ? 'w-5 h-5' : 'w-[18px] h-[18px]'} transition-transform duration-300 group-hover:rotate-12`} />
       </button>
       {collapsed && (
         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 px-2.5 py-1 rounded-lg bg-[var(--color-bg-elevated)] border border-[var(--color-border-subtle)] shadow-lg text-xs font-medium text-[var(--color-text-primary)] whitespace-nowrap opacity-0 scale-95 pointer-events-none group-hover/accent:opacity-100 group-hover/accent:scale-100 transition-all duration-200 delay-150">
-          Couleur du thème
+          {t('theme.color_picker_title')}
         </div>
       )}
 

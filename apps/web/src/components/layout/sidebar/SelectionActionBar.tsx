@@ -228,7 +228,7 @@ export function SelectionActionBar({
 
                       {flatFolders.length === 0 && (
                         <div className="px-3 py-2 text-sm text-[var(--color-text-tertiary)]">
-                          {t('sidebar.no_folders', 'Aucun dossier')}
+                          {t('sidebar.no_folders', 'No folders')}
                         </div>
                       )}
                     </motion.div>

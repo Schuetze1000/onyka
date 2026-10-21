@@ -34,7 +34,7 @@ import { useFoldersStore } from '@/stores/folders'
 import { toast } from '@/components/ui/Toast'
 import { notesApi } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
-import { setLanguageWithServer, getCurrentLanguage } from '@/i18n'
+import { setLanguageWithServer, getCurrentLanguage, languages } from '@/i18n'
 import { ConfirmDialog, StatsPanel } from '@/components/features'
 import { replayOnboarding } from '@/components/features/OnboardingModal'
 import { ThemeBasePicker } from '@/components/ui/ThemeBasePicker'
@@ -377,8 +377,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     backgroundColor: colorValue,
                                     ...(isSelected && { boxShadow: `0 0 0 2px ${colorValue}` }),
                                   }}
-                                  title={color.name}
-                                  aria-label={color.name}
+                                  title={t(`theme.colors.${color.id}`)}
+                                  aria-label={t(`theme.colors.${color.id}`)}
                                 />
                               )
                             })}
@@ -389,32 +389,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-medium text-[var(--color-text-primary)]">{t('settings.language')}</p>
                             <div className="flex p-1 rounded-lg bg-[var(--color-bg-tertiary)]">
-                              <button
-                                onClick={() => {
-                                  setLanguageWithServer('fr')
-                                  setCurrentLang('fr')
-                                }}
-                                className={`px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
-                                  currentLang === 'fr'
-                                    ? 'bg-[var(--color-bg-primary)] shadow-sm'
-                                    : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
-                                }`}
-                              >
-                                🇫🇷
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setLanguageWithServer('en')
-                                  setCurrentLang('en')
-                                }}
-                                className={`px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
-                                  currentLang === 'en'
-                                    ? 'bg-[var(--color-bg-primary)] shadow-sm'
-                                    : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
-                                }`}
-                              >
-                                🇬🇧
-                              </button>
+                              {languages.map((lang) => (
+                                <button
+                                  key={lang.code}
+                                  onClick={() => {
+                                    setLanguageWithServer(lang.code)
+                                    setCurrentLang(lang.code)
+                                  }}
+                                  title={lang.label}
+                                  aria-label={lang.label}
+                                  aria-pressed={currentLang === lang.code}
+                                  className={`px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
+                                    currentLang === lang.code
+                                      ? 'bg-[var(--color-bg-primary)] shadow-sm'
+                                      : 'text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)]'
+                                  }`}
+                                >
+                                  {lang.flag}
+                                </button>
+                              ))}
                             </div>
                           </div>
                         </div>
@@ -630,12 +623,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           {settings?.appName ?? 'Onyka'}
                         </h3>
                         <p className="text-xs font-medium text-[var(--color-text-tertiary)] tracking-wide">
-                          {t('settings.about.version', { version: '1.0.4' })}
+                          {t('settings.about.version', { version: '1.0.4-modified' })}
                         </p>
+                        <span className="inline-flex mt-3 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] border border-[var(--color-accent)]/20">
+                          {t('settings.about.modified')}
+                        </span>
                       </div>
 
                       <p className="text-sm text-[var(--color-text-secondary)] text-center leading-relaxed px-4">
                         {t('settings.about.description')}
+                      </p>
+                      <p className="text-sm text-[var(--color-text-secondary)] text-center leading-relaxed px-4">
+                        {t('settings.about.modifications')}
                       </p>
 
                       <div className="flex justify-center gap-2">
@@ -646,7 +645,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[var(--color-bg-secondary)] text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
                         >
                           <IoLogoGithub className="w-4 h-4" />
-                          GitHub
+                          {t('settings.about.original_project')}
                         </a>
                         <button
                           onClick={() => {
@@ -662,7 +661,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                       <div className="text-center text-xs text-[var(--color-text-tertiary)] pt-2 space-y-0.5">
                         <p>{t('settings.about.license')}</p>
-                        <p>{t('settings.about.made_with')}</p>
+                        <p>{t('settings.about.original_author', { author: 'Karl' })}</p>
                       </div>
                     </motion.div>
                   )}

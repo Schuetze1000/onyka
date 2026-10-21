@@ -120,7 +120,7 @@ function RootDropZone({ isDragging, isActive }: { isDragging: boolean; isActive:
       `}
     >
       <IoFolderOpenOutline className="w-4 h-4" />
-      <span>{t('sidebar.move_to_root', 'Déplacer à la racine')}</span>
+      <span>{t('sidebar.move_to_root', 'Move to root')}</span>
     </div>
   )
 }

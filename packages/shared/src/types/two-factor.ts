@@ -26,7 +26,7 @@ export interface TwoFactorLoginResponse {
     isDisabled: boolean
     twoFactorEnabled: boolean
     trackingEnabled: boolean
-    language: 'en' | 'fr'
+    language: 'en' | 'fr' | 'de'
     createdAt: Date
     updatedAt: Date
   }

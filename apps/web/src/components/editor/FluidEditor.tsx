@@ -171,6 +171,7 @@ function cleanMarkdownHtml(html: string): string {
   return cleaned
 }
 import { EditorBubbleMenu } from './EditorBubbleMenu'
+import { EditorToolbar } from './EditorToolbar'
 import { SlashMenu } from './SlashMenu'
 import { ImageToolbar, type ImageNodeState } from './ImageToolbar'
 import { ColumnsToolbar, type ColumnsNodeState } from './ColumnsToolbar'
@@ -916,6 +917,13 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
 
   return (
     <div ref={containerRef} className="fluid-editor relative smooth-caret">
+      {!readOnly && (
+        <EditorToolbar
+          editor={editor}
+          onInsertImage={() => fileInputRef.current?.click()}
+          isUploadingImage={isUploadingImage}
+        />
+      )}
       <input
         ref={fileInputRef}
         type="file"
@@ -966,7 +974,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
         />
       )}
 
-      <EditorBubbleMenu editor={editor} />
+      {!readOnly && !isMobile && <EditorBubbleMenu editor={editor} />}
 
       {showSlashMenu && (
         <SlashMenu
@@ -979,7 +987,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
         />
       )}
 
-      <EditorContent editor={editor} className="h-full" />
+      <EditorContent editor={editor} className="flex-1 min-h-[240px]" />
     </div>
   )
 })

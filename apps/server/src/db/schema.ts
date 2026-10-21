@@ -19,7 +19,7 @@ export const users = sqliteTable('users', {
   twoFactorSecret: text('two_factor_secret'),
   twoFactorEnabled: integer('two_factor_enabled', { mode: 'boolean' }).notNull().default(false),
   trackingEnabled: integer('tracking_enabled', { mode: 'boolean' }).notNull().default(true),
-  language: text('language', { enum: ['en', 'fr'] }).notNull().default('en'),
+  language: text('language', { enum: ['en', 'fr', 'de'] }).notNull().default('en'),
   theme: text('theme', { enum: ['light', 'dark'] }).notNull().default('dark'),
   darkThemeBase: text('dark_theme_base').notNull().default('default'),
   lightThemeBase: text('light_theme_base').notNull().default('default'),

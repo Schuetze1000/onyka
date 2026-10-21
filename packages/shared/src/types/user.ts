@@ -1,4 +1,4 @@
-export type Language = 'en' | 'fr'
+export type Language = 'en' | 'fr' | 'de'
 export type UserRole = 'user' | 'admin'
 
 export interface UserPreferences {

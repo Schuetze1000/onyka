@@ -18,19 +18,9 @@ const EMOJI_CATEGORIES = {
   flags: ['🏁', '🚩', '🎌', '🏴', '🏳️', '🏳️‍🌈', '🇫🇷', '🇺🇸', '🇬🇧', '🇩🇪', '🇪🇸', '🇮🇹', '🇯🇵', '🇰🇷', '🇨🇳', '🇧🇷', '🇨🇦', '🇦🇺'],
 }
 
-const EMOJI_CATEGORY_LABELS: Record<string, string> = {
-  recent: '🕐 Récents',
-  smileys: '😀 Smileys',
-  gestures: '👋 Gestes',
-  hearts: '❤️ Coeurs',
-  objects: '📝 Objets',
-  tech: '💻 Tech',
-  nature: '🌿 Nature',
-  food: '🍕 Food',
-  activities: '🎮 Activités',
-  travel: '✈️ Voyage',
-  symbols: '✅ Symboles',
-  flags: '🏳️ Drapeaux',
+const EMOJI_CATEGORY_ICONS: Record<string, string> = {
+  recent: '🕐', smileys: '😀', gestures: '👋', hearts: '❤️', objects: '📝', tech: '💻',
+  nature: '🌿', food: '🍕', activities: '🎮', travel: '✈️', symbols: '✅', flags: '🏳️',
 }
 
 const ALL_EMOJIS = Object.values(EMOJI_CATEGORIES).flat()
@@ -166,7 +156,7 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
                 : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)]'
             }`}
           >
-            Icônes
+            {t('icon_picker.icons')}
           </button>
           <button
             onClick={() => setActiveTab('emojis')}
@@ -176,7 +166,7 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
                 : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)]'
             }`}
           >
-            Emojis
+            {t('icon_picker.emojis')}
           </button>
         </div>
 
@@ -186,7 +176,7 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={activeTab === 'icons' ? t('notes.search_icons') : 'Rechercher un emoji...'}
+              placeholder={activeTab === 'icons' ? t('notes.search_icons') : t('icon_picker.search_emojis')}
               className="w-full px-3 py-2 text-sm bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg focus:outline-none focus:border-[var(--color-accent)] placeholder:text-[var(--color-text-tertiary)]"
               autoFocus
             />
@@ -234,6 +224,8 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
                     return (
                       <button
                         key={cat}
+                        title={t(`icon_picker.categories.${cat}`)}
+                        aria-label={t(`icon_picker.categories.${cat}`)}
                         onClick={() => setEmojiCategory(cat)}
                         className={`px-2 py-1 text-xs rounded-md whitespace-nowrap transition-colors ${
                           isActive
@@ -241,7 +233,7 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
                             : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-elevated)]'
                         }`}
                       >
-                        {EMOJI_CATEGORY_LABELS[cat]?.split(' ')[0] || cat}
+                        {EMOJI_CATEGORY_ICONS[cat] || cat}
                       </button>
                     )
                   })}
@@ -267,7 +259,7 @@ export function IconPicker({ selectedIcon, onSelectIcon, onClose, triggerRef }: 
                 })}
                 {filteredEmojis.length === 0 && (
                   <p className="col-span-8 text-sm text-[var(--color-text-tertiary)] text-center py-4">
-                    {search ? 'Aucun emoji trouvé' : 'Aucun emoji récent'}
+                    {t(search ? 'icon_picker.no_emojis' : 'icon_picker.no_recent')}
                   </p>
                 )}
               </div>

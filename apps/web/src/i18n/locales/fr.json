@@ -169,7 +169,42 @@
     "border_shadow": "Ombré",
     "border_polaroid": "Polaroïd",
     "hide_timer": "Masquer le timer",
-    "show_timer": "Afficher le timer"
+    "show_timer": "Afficher le timer",
+    "toolbar": {
+      "title": "Outils de mise en forme",
+      "text_format": "Mise en forme",
+      "heading_short": "Titre",
+      "text_style": "Style du texte",
+      "tools": "Outils",
+      "more": "Plus d’outils de mise en forme",
+      "format": "Texte et listes",
+      "structure": "Listes et structure",
+      "insert": "Insérer",
+      "alignment": "Alignement",
+      "undo": "Annuler",
+      "redo": "Rétablir",
+      "clear": "Effacer la mise en forme",
+      "indent": "Augmenter le retrait",
+      "outdent": "Réduire le retrait",
+      "link_url": "Adresse du lien",
+      "link_text": "Texte du lien (facultatif)",
+      "invalid_link": "Saisissez un lien web, une adresse e-mail ou un numéro de téléphone valide.",
+      "remove_link": "Supprimer le lien",
+      "colors": {
+        "default": "Par défaut",
+        "none": "Aucune",
+        "red": "Rouge",
+        "orange": "Orange",
+        "amber": "Ambre",
+        "yellow": "Jaune",
+        "green": "Vert",
+        "blue": "Bleu",
+        "purple": "Violet",
+        "pink": "Rose"
+      },
+      "show": "Afficher les outils",
+      "hide": "Replier la barre d’outils"
+    }
   },
   "notes": {
     "delete_title": "Supprimer la note ?",
@@ -265,7 +300,8 @@
     "language": "Langue",
     "languages": {
       "fr": "Français",
-      "en": "English"
+      "en": "English",
+      "de": "Deutsch"
     },
     "smooth_typing": "Smooth Typing",
     "smooth_typing_desc": "Animation fluide du curseur lors de la frappe",
@@ -288,7 +324,11 @@
       "version": "v{{version}}",
       "description": "Prise de notes open-source, auto-hébergée et chiffrée. Vos données restent les vôtres.",
       "made_with": "Fait avec soin en France",
-      "license": "Licence AGPL-3.0"
+      "license": "Licence AGPL-3.0",
+      "modified": "Version modifiée",
+      "modifications": "Cette version modifiée ajoute la traduction allemande et des outils d’édition supplémentaires pour ordinateur et mobile.",
+      "original_project": "Projet original sur GitHub",
+      "original_author": "Projet original de {{author}}"
     },
     "authentication": {
       "title": "Authentification",
@@ -561,7 +601,10 @@
       "teal": "Sarcelle",
       "cyan": "Cyan",
       "slate": "Ardoise",
-      "zinc": "Zinc"
+      "zinc": "Zinc",
+      "fuchsia": "Fuchsia",
+      "lime": "Citron vert",
+      "sky": "Bleu ciel"
     }
   },
   "tags": {
@@ -796,7 +839,8 @@
       "send_reset_title": "Envoyer un lien de réinitialisation ?",
       "send_reset_message": "Un email de réinitialisation sera envoyé à l'adresse de <strong>{{name}}</strong>.",
       "reset_sent": "Email de réinitialisation envoyé",
-      "2fa_enabled": "2FA activé"
+      "2fa_enabled": "2FA activé",
+      "no_users_hint": "Aucun utilisateur ne correspond à vos critères."
     },
     "stats": {
       "fetch_error": "Erreur lors du chargement des statistiques",
@@ -823,7 +867,30 @@
         "settings_updated": "Paramètres mis à jour",
         "audit_logs_viewed": "Journaux consultés",
         "admin_login": "Connexion admin"
-      }
+      },
+      "no_logs_hint": "Aucune activité enregistrée.",
+      "entries": "entrées"
+    }
+  },
+  "icon_picker": {
+    "icons": "Icônes",
+    "emojis": "Emojis",
+    "search_emojis": "Rechercher un emoji…",
+    "no_emojis": "Aucun emoji trouvé",
+    "no_recent": "Aucun emoji récent",
+    "categories": {
+      "recent": "Récents",
+      "smileys": "Visages",
+      "gestures": "Gestes",
+      "hearts": "Cœurs",
+      "objects": "Objets",
+      "tech": "Technologie",
+      "nature": "Nature",
+      "food": "Alimentation",
+      "activities": "Activités",
+      "travel": "Voyages",
+      "symbols": "Symboles",
+      "flags": "Drapeaux"
     }
   }
 }

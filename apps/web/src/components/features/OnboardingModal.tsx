@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useTranslation } from 'react-i18next'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { SparkIcon } from '@/components/ui'
-import { setLanguageWithServer, getCurrentLanguage } from '@/i18n'
+import { setLanguageWithServer, getCurrentLanguage, languages } from '@/i18n'
 import { authApi } from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import {
@@ -334,10 +334,7 @@ function LanguagePhase({ onSelected }: { onSelected: () => void }) {
 
       {/* Language buttons */}
       <div className="flex gap-3">
-        {([
-          { code: 'fr' as Language, label: 'Fran\u00e7ais', flag: '\ud83c\uddeb\ud83c\uddf7' },
-          { code: 'en' as Language, label: 'English', flag: '\ud83c\uddec\ud83c\udde7' },
-        ]).map((lang, i) => (
+        {languages.map((lang, i) => (
           <motion.button
             key={lang.code}
             onClick={() => handleSelect(lang.code)}

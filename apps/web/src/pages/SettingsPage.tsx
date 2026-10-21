@@ -129,7 +129,7 @@ export function SettingsPage() {
                       {t('settings.language')}
                     </p>
                     <p className="text-sm text-[var(--color-text-secondary)]">
-                      {currentLang === 'fr' ? 'Français' : 'English'}
+                      {t(`settings.languages.${currentLang}`)}
                     </p>
                   </div>
                 </div>

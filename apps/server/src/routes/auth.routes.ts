@@ -347,7 +347,7 @@ router.get('/language', authenticate, async (req, res, next) => {
 })
 
 const languageSchema = z.object({
-  language: z.enum(['en', 'fr']),
+  language: z.enum(['en', 'fr', 'de']),
 })
 
 router.patch('/language', authenticate, async (req, res, next) => {

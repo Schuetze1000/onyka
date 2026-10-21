@@ -68,7 +68,7 @@ export function AdminPage() {
                     {t('admin.title')}
                   </h1>
                   <p className="text-xs sm:text-sm text-[var(--color-text-tertiary)] hidden xs:block">
-                    {t('admin.subtitle', 'Gérer les utilisateurs et paramètres')}
+                    {t('admin.subtitle', 'Manage users and settings')}
                   </p>
                 </div>
               </div>
@@ -290,7 +290,7 @@ function UsersSection() {
               <IoPeopleOutline className="w-8 h-8 text-[var(--color-text-tertiary)] opacity-50" />
             </div>
             <p className="text-base font-medium text-[var(--color-text-secondary)]">{t('admin.users.no_users')}</p>
-            <p className="text-sm mt-1 text-[var(--color-text-tertiary)]">{t('admin.users.no_users_hint', 'Aucun utilisateur ne correspond à vos critères')}</p>
+            <p className="text-sm mt-1 text-[var(--color-text-tertiary)]">{t('admin.users.no_users_hint', 'No users match your search criteria')}</p>
           </div>
         ) : (
           <div className="divide-y divide-[var(--color-border)]">
@@ -925,7 +925,7 @@ function AuditLogsSection() {
               <IoDocumentTextOutline className="w-8 h-8 opacity-40" />
             </div>
             <p className="text-lg font-medium text-[var(--color-text-secondary)]">{t('admin.logs.no_logs')}</p>
-            <p className="text-sm mt-1">{t('admin.logs.no_logs_hint', 'Aucune activité enregistrée')}</p>
+            <p className="text-sm mt-1">{t('admin.logs.no_logs_hint', 'No activity recorded')}</p>
           </div>
         ) : (
           <div className="divide-y divide-[var(--color-border-subtle)]">
@@ -975,7 +975,7 @@ function AuditLogsSection() {
               <span className="mx-1 sm:mx-1.5">/</span>
               <span>{totalPages}</span>
               <span className="mx-1.5 sm:mx-2 text-[var(--color-border)]">•</span>
-              <span>{total} <span className="hidden sm:inline">{t('admin.logs.entries', 'entrées')}</span></span>
+              <span>{total} <span className="hidden sm:inline">{t('admin.logs.entries', 'entries')}</span></span>
             </p>
             <div className="flex items-center gap-1.5">
               <button

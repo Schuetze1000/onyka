@@ -2,7 +2,14 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import fr from './locales/fr.json'
 import en from './locales/en.json'
+import de from './locales/de.json'
 import type { Language } from '@onyka/shared'
+
+export const languages: { code: Language; label: string; flag: string }[] = [
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+  { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
+]
 
 // Get saved language from localStorage or default to English
 const savedLanguage = localStorage.getItem('onyka-language') || 'en'
@@ -12,7 +19,8 @@ i18n
   .init({
     resources: {
       fr: { translation: fr },
-      en: { translation: en }
+      en: { translation: en },
+      de: { translation: de }
     },
     lng: savedLanguage,
     fallbackLng: 'en',

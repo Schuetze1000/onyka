@@ -169,7 +169,42 @@
     "border_shadow": "Shadow",
     "border_polaroid": "Polaroid",
     "hide_timer": "Hide timer",
-    "show_timer": "Show timer"
+    "show_timer": "Show timer",
+    "toolbar": {
+      "title": "Formatting tools",
+      "text_format": "Text formatting",
+      "heading_short": "Heading",
+      "text_style": "Text style",
+      "tools": "Tools",
+      "more": "More formatting tools",
+      "format": "Text & lists",
+      "structure": "Lists & structure",
+      "insert": "Insert",
+      "alignment": "Alignment",
+      "undo": "Undo",
+      "redo": "Redo",
+      "clear": "Clear formatting",
+      "indent": "Indent",
+      "outdent": "Outdent",
+      "link_url": "Link address",
+      "link_text": "Link text (optional)",
+      "invalid_link": "Enter a valid web, email or phone link.",
+      "remove_link": "Remove link",
+      "colors": {
+        "default": "Default",
+        "none": "None",
+        "red": "Red",
+        "orange": "Orange",
+        "amber": "Amber",
+        "yellow": "Yellow",
+        "green": "Green",
+        "blue": "Blue",
+        "purple": "Purple",
+        "pink": "Pink"
+      },
+      "show": "Show tools",
+      "hide": "Collapse toolbar"
+    }
   },
   "notes": {
     "delete_title": "Delete note?",
@@ -265,7 +300,8 @@
     "language": "Language",
     "languages": {
       "fr": "Français",
-      "en": "English"
+      "en": "English",
+      "de": "Deutsch"
     },
     "smooth_typing": "Smooth Typing",
     "smooth_typing_desc": "Fluid cursor animation while typing",
@@ -288,7 +324,11 @@
       "version": "v{{version}}",
       "description": "Open-source, self-hosted and encrypted note-taking. Your data stays yours.",
       "made_with": "Made with care in France",
-      "license": "AGPL-3.0 License"
+      "license": "AGPL-3.0 License",
+      "modified": "Modified version",
+      "modifications": "This modified version adds German translations and expanded editor tools for desktop and mobile.",
+      "original_project": "Original project on GitHub",
+      "original_author": "Original project by {{author}}"
     },
     "authentication": {
       "title": "Authentication",
@@ -561,7 +601,10 @@
       "teal": "Teal",
       "cyan": "Cyan",
       "slate": "Slate",
-      "zinc": "Zinc"
+      "zinc": "Zinc",
+      "fuchsia": "Fuchsia",
+      "lime": "Lime",
+      "sky": "Sky blue"
     }
   },
   "tags": {
@@ -796,7 +839,8 @@
       "send_reset_title": "Send password reset link?",
       "send_reset_message": "A password reset email will be sent to <strong>{{name}}</strong>'s email address.",
       "reset_sent": "Password reset email sent",
-      "2fa_enabled": "2FA enabled"
+      "2fa_enabled": "2FA enabled",
+      "no_users_hint": "No users match your search criteria."
     },
     "stats": {
       "fetch_error": "Failed to load statistics",
@@ -823,7 +867,30 @@
         "settings_updated": "Settings updated",
         "audit_logs_viewed": "Logs viewed",
         "admin_login": "Admin login"
-      }
+      },
+      "no_logs_hint": "No activity recorded yet.",
+      "entries": "entries"
+    }
+  },
+  "icon_picker": {
+    "icons": "Icons",
+    "emojis": "Emojis",
+    "search_emojis": "Search emojis…",
+    "no_emojis": "No emojis found",
+    "no_recent": "No recently used emojis yet",
+    "categories": {
+      "recent": "Recent",
+      "smileys": "Faces",
+      "gestures": "Gestures",
+      "hearts": "Hearts",
+      "objects": "Objects",
+      "tech": "Technology",
+      "nature": "Nature",
+      "food": "Food",
+      "activities": "Activities",
+      "travel": "Travel",
+      "symbols": "Symbols",
+      "flags": "Flags"
     }
   }
 }

@@ -87,10 +87,13 @@ export class FoldersService {
       throw new FoldersServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
     }
 
-    if (folder.ownerId !== userId) {
+    if (folder.ownerId !== userId && !await shareRepository.hasAccess(userId, folderId, 'folder', 'edit')) {
       throw new FoldersServiceError('Access denied', 'ACCESS_DENIED', 403)
     }
 
+    if (folder.ownerId !== userId && (input.parentId !== undefined || input.position !== undefined)) {
+      throw new FoldersServiceError('Access denied', 'ACCESS_DENIED', 403)
+    }
     if (input.parentId !== undefined) {
       if (input.parentId === folderId) {
         throw new FoldersServiceError('Cannot move folder into itself', 'CIRCULAR_REFERENCE', 400)
@@ -132,7 +135,7 @@ export class FoldersService {
       throw new FoldersServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
     }
 
-    if (folder.ownerId !== userId) {
+    if (folder.ownerId !== userId && !await shareRepository.hasAccess(userId, folderId, 'folder', 'admin')) {
       throw new FoldersServiceError('Access denied', 'ACCESS_DENIED', 403)
     }
 
@@ -148,7 +151,7 @@ export class FoldersService {
     }
 
     if (cascade) {
-      await this.deleteRecursive(folderId, userId)
+      await this.deleteRecursive(folderId, folder.ownerId)
     } else {
       await folderRepository.delete(folderId)
     }

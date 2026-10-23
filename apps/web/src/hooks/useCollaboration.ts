@@ -1,8 +1,9 @@
 /** Real-time collaboration hook for live editing, presence, and cursor sync. */
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
+import { uniqueCollaborators } from '@/utils/collaborationPresence'
 import { getSharedSocket } from './useSocket'
 
 interface UserPresence {
@@ -89,7 +90,7 @@ export function useCollaboration({
       if (data.noteId === noteIdRef.current) {
         const otherUsers = data.users.filter(u => u.socketId !== socket.id)
         setUsers(otherUsers)
-        onUsersChangeRef.current?.(otherUsers)
+        onUsersChangeRef.current?.(uniqueCollaborators(otherUsers))
       }
     }
 
@@ -98,7 +99,7 @@ export function useCollaboration({
       setUsers(prev => {
         if (prev.some(u => u.socketId === userData.socketId)) return prev
         const updated = [...prev, userData]
-        onUsersChangeRef.current?.(updated)
+        onUsersChangeRef.current?.(uniqueCollaborators(updated))
         return updated
       })
     }
@@ -107,7 +108,7 @@ export function useCollaboration({
       setUsers(prev => {
         const updated = prev.filter(u => u.socketId !== data.socketId)
         if (updated.length === prev.length) return prev
-        onUsersChangeRef.current?.(updated)
+        onUsersChangeRef.current?.(uniqueCollaborators(updated))
         return updated
       })
     }
@@ -126,7 +127,7 @@ export function useCollaboration({
             ? { ...u, cursorPosition: data.position }
             : u
         )
-        onUsersChangeRef.current?.(updated)
+        onUsersChangeRef.current?.(uniqueCollaborators(updated))
         return updated
       })
     }, 50)
@@ -196,9 +197,11 @@ export function useCollaboration({
     if (enabled) sendCursorUpdateRef.current(noteId, position)
   }, [noteId, enabled])
 
+  const visibleUsers = useMemo(() => uniqueCollaborators(users), [users])
+
   return {
     isConnected,
-    users,
+    users: visibleUsers,
     sendContentChange,
     sendCursorUpdate,
   }

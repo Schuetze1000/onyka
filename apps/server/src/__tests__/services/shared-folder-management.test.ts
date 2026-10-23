@@ -3,13 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   folder: vi.fn(), folders: vi.fn(), permission: vi.fn(), createNote: vi.fn(), createFolder: vi.fn(),
   grants: vi.fn(), updateNote: vi.fn(), note: vi.fn(),
+  updateFolder: vi.fn(), deleteFolder: vi.fn(), children: vi.fn(), ownerNotes: vi.fn(), softDelete: vi.fn(),
 }))
 vi.mock('../../repositories/folder.repository.js', () => ({ folderRepository: {
-  findById: mocks.folder, findByIds: mocks.folders, create: mocks.createFolder,
+  findById: mocks.folder, findByIds: mocks.folders, create: mocks.createFolder, update: mocks.updateFolder,
+  delete: mocks.deleteFolder, findByParent: mocks.children, hasChildren: async () => false, hasNotes: async () => false,
 } }))
 vi.mock('../../repositories/share.repository.js', () => ({ shareRepository: { hasAccess: mocks.permission } }))
 vi.mock('../../repositories/note.repository.js', () => ({ noteRepository: {
   create: mocks.createNote, findById: mocks.note, update: mocks.updateNote,
+  findByOwner: mocks.ownerNotes, softDelete: mocks.softDelete,
 } }))
 vi.mock('../../repositories/tag.repository.js', () => ({ tagRepository: {} }))
 vi.mock('../../repositories/user.repository.js', () => ({ userRepository: { getTrackingEnabled: async () => false } }))
@@ -30,6 +33,31 @@ beforeEach(() => {
 })
 
 describe('Create content inside shared folders', () => {
+  it('requires edit rights for renaming and icons, keeping moves owner-only', async () => {
+    mocks.permission.mockResolvedValue(false)
+    await expect(foldersService.update('shared', 'reader', { name: 'Renamed' })).rejects.toMatchObject({ statusCode: 403 })
+    await expect(foldersService.update('shared', 'reader', { icon: 'Star' })).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.updateFolder).not.toHaveBeenCalled()
+    mocks.permission.mockResolvedValue(true)
+    await foldersService.update('shared', 'editor', { name: 'Renamed', icon: 'Star' })
+    expect(mocks.permission).toHaveBeenLastCalledWith('editor', 'shared', 'folder', 'edit')
+    expect(mocks.updateFolder).toHaveBeenCalledWith('shared', { name: 'Renamed', icon: 'Star' })
+    await expect(foldersService.update('shared', 'editor', { parentId: null })).rejects.toMatchObject({ statusCode: 403 })
+  })
+  it('requires admin rights for deletion and traverses the original owner workspace', async () => {
+    mocks.permission.mockResolvedValue(false)
+    await expect(foldersService.delete('shared', 'editor', true)).rejects.toMatchObject({ statusCode: 403 })
+    expect(mocks.permission).toHaveBeenCalledWith('editor', 'shared', 'folder', 'admin')
+    expect(mocks.deleteFolder).not.toHaveBeenCalled()
+    mocks.permission.mockResolvedValue(true)
+    mocks.children.mockResolvedValue([])
+    mocks.ownerNotes.mockResolvedValue([{ id: 'contained' }])
+    await foldersService.delete('shared', 'admin', true)
+    expect(mocks.children).toHaveBeenCalledWith('owner', 'shared')
+    expect(mocks.ownerNotes).toHaveBeenCalledWith('owner', { folderId: 'shared' })
+    expect(mocks.softDelete).toHaveBeenCalledWith('contained')
+    expect(mocks.deleteFolder).toHaveBeenCalledWith('shared')
+  })
   it.each(['read', 'none'])('rejects %s access for both notes and subfolders', async () => {
     mocks.permission.mockResolvedValue(false)
     await expect(notesService.create('reader', { folderId: 'shared' })).rejects.toMatchObject({ statusCode: 403 })

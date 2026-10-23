@@ -68,12 +68,12 @@ export class ExportService {
     if (!folder) {
       throw new ExportServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
     }
-    if (folder.ownerId !== userId) {
+    if (folder.ownerId !== userId && !await shareRepository.hasAccess(userId, folderId, 'folder', 'read')) {
       throw new ExportServiceError('Access denied', 'ACCESS_DENIED', 403)
     }
 
     // Get the full folder tree starting from this folder
-    const tree = await folderRepository.findTreeByOwner(userId)
+    const tree = await folderRepository.findTreeByOwner(folder.ownerId)
     const targetFolder = this.findFolderInTree(tree, folderId)
     if (!targetFolder) {
       throw new ExportServiceError('Folder not found in tree', 'FOLDER_NOT_FOUND', 404)

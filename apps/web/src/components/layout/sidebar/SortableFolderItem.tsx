@@ -1,23 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useSortable } from '@dnd-kit/sortable'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import {
   IoChevronForward,
   IoEllipsisHorizontal,
-  IoCreateOutline,
-  IoHappyOutline,
-  IoTrashOutline,
   IoDocumentOutline,
   IoFolderOutline,
   IoPeopleOutline,
-  IoDownloadOutline,
 } from 'react-icons/io5'
 import { ShareDialog, ExportDialog } from '@/components/features'
 import { IconPicker } from '@/components/ui'
 import { getIconByName, isEmoji } from '@/utils/icons'
 import { useSharedFolderIds } from '@/stores/shares'
+import { FolderContextMenu } from './FolderContextMenu'
 import { SortableNoteItem } from './SortableNoteItem'
 import { makeDragId, sortItemsAlphabetically } from './use-sidebar-dnd'
 import type { DragItemId, DropTarget } from './use-sidebar-dnd'
@@ -90,7 +86,6 @@ export function SortableFolderItem({
   const [showNewFolderInput, setShowNewFolderInput] = useState(false)
   const [newItemName, setNewItemName] = useState('')
   const menuButtonRef = useRef<HTMLButtonElement>(null)
-  const menuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const newItemInputRef = useRef<HTMLInputElement>(null)
 
@@ -145,16 +140,6 @@ export function SortableFolderItem({
     return () => window.removeEventListener('close-context-menus', handleCloseOtherMenus)
   }, [])
 
-  useEffect(() => {
-    if (!menuPosition) return
-    const handleOutsideMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && menuRef.current.contains(e.target as Node)) return
-      closeMenu()
-    }
-    window.addEventListener('mousedown', handleOutsideMouseDown, true)
-    return () => window.removeEventListener('mousedown', handleOutsideMouseDown, true)
-  }, [menuPosition])
-
   const openMenu = (x: number, y: number) => {
     window.dispatchEvent(new CustomEvent('close-context-menus'))
     const menuWidth = 160
@@ -169,8 +154,7 @@ export function SortableFolderItem({
     setShowIconPicker(false)
   }
 
-  const handleStartRename = (e: React.MouseEvent) => {
-    e.stopPropagation()
+  const handleStartRename = () => {
     closeMenu()
     setRenameValue(folder.name)
     setIsRenaming(true)
@@ -368,6 +352,7 @@ export function SortableFolderItem({
 
         <button
           ref={menuButtonRef}
+          aria-label={t('common.more_options')} aria-expanded={Boolean(menuPosition)}
           onClick={(e) => {
             e.stopPropagation()
             if (menuPosition) {
@@ -384,89 +369,12 @@ export function SortableFolderItem({
           <IoEllipsisHorizontal className="w-3.5 h-3.5 text-[var(--color-text-tertiary)]" />
         </button>
 
-        {menuPosition &&
-          createPortal(
-              <div
-                ref={menuRef}
-                className="fixed z-[9999] border rounded-xl py-1.5 min-w-[160px] animate-scale-in floating-panel"
-                style={{ top: menuPosition.y, left: menuPosition.x }}
-              >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleStartNewNote()
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoDocumentOutline className="w-4 h-4" />
-                  {t('sidebar.new_note')}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleStartNewFolder()
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoFolderOutline className="w-4 h-4" />
-                  {t('sidebar.new_folder')}
-                </button>
-                <div className="my-1 border-t border-[var(--color-border-subtle)]" />
-                <button
-                  onClick={handleStartRename}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoCreateOutline className="w-4 h-4" />
-                  {t('common.rename')}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setMenuPosition(null)
-                    setShowIconPicker(true)
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoHappyOutline className="w-4 h-4" />
-                  {t('notes.change_icon')}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeMenu()
-                    setShowShareDialog(true)
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoPeopleOutline className="w-4 h-4" />
-                  {t('share.title')}
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    closeMenu()
-                    setShowExportDialog(true)
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors"
-                >
-                  <IoDownloadOutline className="w-4 h-4" />
-                  {t('export.title')}
-                </button>
-                <div className="my-1 border-t border-[var(--color-border-subtle)]" />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDeleteFolder(folder.id, folder.name)
-                    closeMenu()
-                  }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-error)]/15 hover:text-[var(--color-error)] rounded-sm transition-colors"
-                >
-                  <IoTrashOutline className="w-4 h-4" />
-                  {t('common.delete')}
-                </button>
-              </div>,
-            document.body
-          )}
+        {menuPosition && <FolderContextMenu position={menuPosition} triggerRef={menuButtonRef} onClose={closeMenu}
+          onNewNote={handleStartNewNote} onNewFolder={handleStartNewFolder} onRename={handleStartRename}
+          onIcon={() => { setMenuPosition(null); setShowIconPicker(true) }}
+          onShare={() => { closeMenu(); setShowShareDialog(true) }}
+          onExport={() => { closeMenu(); setShowExportDialog(true) }}
+          onDelete={() => { onDeleteFolder(folder.id, folder.name); closeMenu() }} />}
 
         {showIconPicker && (
           <IconPicker

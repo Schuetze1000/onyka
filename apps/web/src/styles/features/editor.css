@@ -288,8 +288,12 @@
 .editor-format-toolbar[data-mobile] .editor-format-tools { grid-template-columns: minmax(0, 1fr); }
 .editor-format-toolbar[data-mobile] .editor-format-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .editor-format-placeholder { height: 56px; flex-shrink: 0; margin-bottom: 1rem; }
-.editor-format-list-level { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px 6px; border-top: 1px solid var(--color-border-subtle); }
-.editor-format-list-level .editor-format-button { min-height: 44px; justify-content: center; font-size: 12px; }
+.editor-format-list-level { display: flex; align-items: center; gap: 2px; padding: 0 4px; border-top: 1px solid var(--color-border-subtle); }
+.editor-format-list-level .editor-format-button { min-height: 44px; gap: 5px; padding: 6px 8px; border-radius: 7px; font-size: 11px; white-space: nowrap; color: var(--color-text-secondary); }
+.editor-format-list-level .editor-format-icon, .editor-format-list-level svg { width: 14px; height: 14px; }
+.editor-format-list-level .editor-format-list-tools { margin-left: auto; }
+.editor-format-docked.editor-format-list-only { box-shadow: var(--shadow-xs); }
+.editor-format-list-only .editor-format-list-level { border-top: 0; }
 .editor-toolbar-return {
   display: inline-flex;
   align-items: center;

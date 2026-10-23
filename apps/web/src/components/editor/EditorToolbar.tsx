@@ -71,7 +71,6 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
   const mobile = useIsMobile()
   const collapsed = useEditorToolbarStore((state) => state.collapsed[mobile ? 'mobile' : 'desktop'])
   const setCollapsed = useEditorToolbarStore((state) => state.setCollapsed)
-  const { toolbarRef, docked, viewport } = useEditorToolbarDock(editor, mobile, !collapsed)
   const [expanded, setExpanded] = useState(false)
   const [mobileTab, setMobileTab] = useState<'format' | 'insert'>('insert')
   const [showLink, setShowLink] = useState(false)
@@ -107,6 +106,10 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
       canOutdent: current.can().liftListItem(current.isActive('taskList') ? 'taskItem' : 'listItem'),
     }),
   })
+
+  const inList = state.bulletList || state.orderedList || state.taskList
+  const listOnly = mobile && collapsed && inList
+  const { toolbarRef, docked, viewport } = useEditorToolbarDock(editor, mobile, !collapsed || inList)
 
   const openLink = () => {
     setLinkUrl(editor.getAttributes('link').href || '')
@@ -160,8 +163,27 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
     else if (!mobile && !editor.isFocused) requestAnimationFrame(() => toolbarRef.current?.querySelector<HTMLButtonElement>('[data-toolbar-toggle]')?.focus())
   }
 
+  const listActions = (
+    <div className="editor-format-list-level" role="group" aria-label={t('editor.toolbar.list_level')}>
+      <ToolButton label={t('editor.toolbar.outdent')} disabled={!state.canOutdent}
+        onClick={() => editor.chain().focus().liftListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
+        <IoReturnUpBackOutline />
+      </ToolButton>
+      <ToolButton label={t('editor.toolbar.indent')} disabled={!state.canIndent}
+        onClick={() => editor.chain().focus().sinkListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
+        <IoReturnDownForwardOutline />
+      </ToolButton>
+      {listOnly && <button type="button" className="editor-format-button editor-format-list-tools"
+        aria-label={t('editor.toolbar.show')} title={t('editor.toolbar.show')} aria-expanded="false"
+        onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()}
+        onClick={toggleCollapsed}>
+        <IoOptionsOutline aria-hidden="true" /><span>{t('editor.toolbar.tools')}</span>
+      </button>}
+    </div>
+  )
+
   const toolbar = (
-    <div ref={toolbarRef} className={`editor-format-toolbar${docked ? ' editor-format-docked' : ''}${collapsed ? ' editor-format-collapsed' : ''}`}
+    <div ref={toolbarRef} className={`editor-format-toolbar${docked ? ' editor-format-docked' : ''}${listOnly ? ' editor-format-list-only' : collapsed ? ' editor-format-collapsed' : ''}`}
       data-mobile={mobile || undefined}
       style={docked ? {
         bottom: viewport.inset,
@@ -179,7 +201,7 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
         else { setExpanded(false); moreRef.current?.focus() }
       }}
     >
-      {collapsed ? (
+      {listOnly ? listActions : collapsed ? (
         <button type="button" className="editor-format-restore editor-format-button"
           data-toolbar-toggle aria-expanded="false" aria-label={t('editor.toolbar.show')}
           onPointerDown={(event) => event.preventDefault()} onMouseDown={(event) => event.preventDefault()}
@@ -226,18 +248,7 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
         </button>
       </div>
 
-      {mobile && (state.bulletList || state.orderedList || state.taskList) && (
-        <div className="editor-format-list-level" role="group" aria-label={t('editor.toolbar.list_level')}>
-          <ToolButton label={t('editor.toolbar.outdent')} disabled={!state.canOutdent}
-            onClick={() => editor.chain().focus().liftListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
-            <IoReturnUpBackOutline />
-          </ToolButton>
-          <ToolButton label={t('editor.toolbar.indent')} disabled={!state.canIndent}
-            onClick={() => editor.chain().focus().sinkListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
-            <IoReturnDownForwardOutline />
-          </ToolButton>
-        </div>
-      )}
+      {mobile && inList && listActions}
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -383,9 +394,9 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
     </div>
   )
 
-  if (mobile && collapsed) return null
+  if (mobile && collapsed && !docked) return null
 
   return docked
-    ? <><div className="editor-format-placeholder" aria-hidden="true" />{createPortal(toolbar, document.body)}</>
+    ? <>{!collapsed && <div className="editor-format-placeholder" aria-hidden="true" />}{createPortal(toolbar, document.body)}</>
     : toolbar
 }

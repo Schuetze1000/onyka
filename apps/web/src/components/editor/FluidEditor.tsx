@@ -183,9 +183,10 @@ interface FluidEditorProps {
   placeholder?: string
   readOnly?: boolean
   onEditorReady?: (editor: Editor | null) => void
+  liveRevision?: number
 }
 
-export const FluidEditor = memo(function FluidEditor({ content, onChange, placeholder = 'Start writing...', readOnly = false, onEditorReady }: FluidEditorProps) {
+export const FluidEditor = memo(function FluidEditor({ content, onChange, placeholder = 'Start writing...', readOnly = false, onEditorReady, liveRevision = 0 }: FluidEditorProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [showSlashMenu, setShowSlashMenu] = useState(false)
@@ -209,6 +210,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
   // Track local editing state to prevent external updates from overwriting
   const isLocalChangeRef = useRef(false)
   const lastExternalContentRef = useRef(content)
+  const appliedLiveRevision = useRef(liveRevision)
   const lastLocalEditTimeRef = useRef<number>(0)
   const EDIT_GRACE_PERIOD = 2000
 
@@ -849,7 +851,8 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
     const timeSinceLastEdit = Date.now() - lastLocalEditTimeRef.current
     const isInGracePeriod = timeSinceLastEdit < EDIT_GRACE_PERIOD
 
-    if (isDirtyRef.current || (isLocalChangeRef.current && isInGracePeriod)) {
+    const liveUpdate = appliedLiveRevision.current !== liveRevision
+    if (isDirtyRef.current || (!liveUpdate && isLocalChangeRef.current && isInGracePeriod)) {
       return
     }
 
@@ -857,6 +860,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
       isLocalChangeRef.current = false
     }
 
+    appliedLiveRevision.current = liveRevision
     if (content !== lastExternalContentRef.current) {
       lastExternalContentRef.current = content
       const { from, to } = editor.state.selection
@@ -873,7 +877,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
         }
       }
     }
-  }, [content, editor])
+  }, [content, editor, liveRevision])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {

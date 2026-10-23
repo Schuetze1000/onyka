@@ -23,6 +23,7 @@ import { CSS } from '@dnd-kit/utilities'
 import type { NotePage } from '@onyka/shared'
 
 interface PageTabsProps {
+  readOnly?: boolean
   noteId: string
   pages: NotePage[]
   activePageId: string
@@ -41,6 +42,7 @@ interface ContextMenuState {
 }
 
 interface SortablePageTabProps {
+  readOnly: boolean
   page: NotePage
   isActive: boolean
   isEditing: boolean
@@ -55,6 +57,7 @@ interface SortablePageTabProps {
 }
 
 function SortablePageTab({
+  readOnly,
   page,
   isActive,
   isEditing,
@@ -74,7 +77,7 @@ function SortablePageTab({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: page.id, disabled: isEditing })
+  } = useSortable({ id: page.id, disabled: isEditing || readOnly })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -94,7 +97,7 @@ function SortablePageTab({
       }}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      {...(isEditing ? {} : { ...attributes, ...listeners })}
+      {...(isEditing || readOnly ? {} : { ...attributes, ...listeners })}
     >
       {isEditing ? (
         <input
@@ -129,6 +132,7 @@ function SortablePageTab({
 }
 
 export function PageTabs({
+  readOnly = false,
   noteId,
   pages,
   activePageId,
@@ -262,13 +266,14 @@ export function PageTabs({
                 <SortablePageTab
                   key={page.id}
                   page={page}
+                  readOnly={readOnly}
                   isActive={activePageId === page.id}
                   isEditing={editingId === page.id}
                   editValue={editValue}
                   placeholder={t('pages.untitled')}
                   onClick={() => onPageChange(page.id)}
-                  onDoubleClick={() => handleStartEdit(page.id)}
-                  onContextMenu={(e) => handleContextMenu(e, page.id)}
+                  onDoubleClick={() => { if (!readOnly) handleStartEdit(page.id) }}
+                  onContextMenu={(e) => { if (!readOnly) handleContextMenu(e, page.id) }}
                   onEditChange={setEditValue}
                   onEditFinish={() => handleFinishEdit(page.id)}
                   onEditKeyDown={(e) => handleKeyDown(e, page.id)}

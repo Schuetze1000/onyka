@@ -32,6 +32,7 @@ import { useTagsStore } from '@/stores/tags'
 import { useNotesStore } from '@/stores/notes'
 import { useFoldersStore } from '@/stores/folders'
 import { useThemeStore, EDITOR_FONT_SIZES, EDITOR_FONT_FAMILIES } from '@/stores/theme'
+import { useSharesStore } from '@/stores/shares'
 import { useAuthStore } from '@/stores/auth'
 import { useCommentsStore } from '@/stores/comments'
 import { usePagesStore } from '@/stores/pages'
@@ -127,6 +128,9 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   const { focusMode, toggleFocusMode, editorFontSize, setEditorFontSize, editorFontFamily, setEditorFontFamily } = useThemeStore()
   const { user } = useAuthStore()
   const isOwner = user?.id === note.ownerId
+  const sharedPermission = useSharesStore(state => state.sharedWithMe.find(n => n.id === note.id)?.permission)
+  const canEditNote = isOwner || sharedPermission === 'edit' || sharedPermission === 'admin'
+  const [liveRevision, setLiveRevision] = useState(0)
   const { countsByNote, fetchCount } = useCommentsStore()
   const commentCount = countsByNote[note.id] || 0
 
@@ -226,27 +230,24 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
     prevShareDialogRef.current = showShareDialog
   }, [showShareDialog, note.id, isOwner])
 
-  const isRemoteUpdateRef = useRef(false)
-
-  // Only join collaboration room when the note is actually shared:
-  // - Non-owners are viewing a shared note → always enable
-  // - Owners → enable only when collaborators exist
-  const collaborationEnabled = !isOwner || collaboratorCount > 0
-
+  // Every authorized session joins, including other devices of the same user.
   const { isConnected, users: collaborators, sendContentChange } = useCollaboration({
     noteId: note.id,
-    enabled: collaborationEnabled,
+    enabled: Boolean(user),
     onContentUpdate: (update) => {
-      isRemoteUpdateRef.current = true
-      setLocalTitle(update.title)
+      // Do not replace unsaved local work. This channel is not a merge engine.
+      if (pendingUpdatesRef.current.title === undefined) {
+        setLocalTitle(update.title)
+        localTitleRef.current = update.title
+        lastSavedRef.current.title = update.title
+      }
+      if ((update.pageId ?? null) !== (activePage?.id ?? null)) return
+      if (pendingUpdatesRef.current.content !== undefined || savingContentRef.current !== null) return
+      if (wordCountTimerRef.current) clearTimeout(wordCountTimerRef.current)
       setLocalContent(update.content)
       localContentRef.current = update.content
-      localTitleRef.current = update.title
-      lastSavedRef.current = { title: update.title, content: update.content }
-      // Reset after React processes the state update
-      setTimeout(() => {
-        isRemoteUpdateRef.current = false
-      }, 50)
+      lastSavedRef.current.content = update.content
+      setLiveRevision(revision => revision + 1)
     },
   })
   const [showTypographyMenu, setShowTypographyMenu] = useState(false)
@@ -358,16 +359,16 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
     localTitleRef.current = title
     isEditingRef.current = true
     pendingUpdatesRef.current = { ...pendingUpdatesRef.current, title }
+    sendContentChange(localContentRef.current, title, activePage?.id ?? null)
     triggerSave()
   }
 
   const handleContentChange = useCallback(
     (content: string) => {
-      if (isRemoteUpdateRef.current) return
       localContentRef.current = content
       isEditingRef.current = true
       pendingUpdatesRef.current = { ...pendingUpdatesRef.current, content }
-      sendContentChange(content, localTitleRef.current)
+      sendContentChange(content, localTitleRef.current, activePage?.id ?? null)
       triggerSave()
 
       if (wordCountTimerRef.current) clearTimeout(wordCountTimerRef.current)
@@ -376,7 +377,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
         setLastModifiedAt(new Date())
       }, 500)
     },
-    [triggerSave, sendContentChange]
+    [triggerSave, sendContentChange, activePage?.id]
   )
 
   useEffect(() => {
@@ -425,6 +426,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   }
 
   const handlePageCreate = async () => {
+    if (!canEditNote) return
     if (pendingUpdatesRef.current.content && activePage) {
       const contentToSave = pendingUpdatesRef.current.content
       savingContentRef.current = contentToSave
@@ -462,6 +464,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   }
 
   const handlePageLockToggle = async (pageId: string, isLocked: boolean) => {
+    if (!canEditNote) return
     await updatePage(pageId, { isLocked })
   }
 
@@ -518,6 +521,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
               placeholder={t('editor.untitled')}
               className="w-full text-2xl md:text-[26px] font-bold bg-transparent text-[var(--color-text-primary)] placeholder:text-[var(--color-text-tertiary)]/30 focus:outline-none tracking-[-0.025em] py-0.5 pl-8 md:pl-0 leading-tight"
               value={localTitle}
+              readOnly={!canEditNote}
               onChange={(e) => handleTitleChange(e.target.value)}
             />
             {!focusMode && (
@@ -529,7 +533,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
                   <>
                     <span className="opacity-30">·</span>
                     <button
-                      onClick={handlePageCreate}
+                      disabled={!canEditNote} onClick={handlePageCreate}
                       className="hover:text-[var(--color-text-secondary)] transition-colors"
                       title={t('pages.add')}
                     >
@@ -542,7 +546,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
           </div>
 
           <div className="flex items-center gap-0.5 flex-shrink-0">
-            {breakpoint === 'mobile' && toolbarCollapsed && !activePage?.isLocked && (
+            {breakpoint === 'mobile' && toolbarCollapsed && canEditNote && !activePage?.isLocked && (
               <div className="relative">
                 <button type="button" onClick={toggleMobileToolbar}
                   onPointerDown={(event) => event.preventDefault()}
@@ -737,7 +741,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
                 {showOptionsMenu && (
                   <div className="absolute right-0 top-full mt-1 w-52 border rounded-lg py-1 z-50 floating-panel">
-                    {breakpoint === 'mobile' && !activePage?.isLocked && (
+                    {breakpoint === 'mobile' && canEditNote && !activePage?.isLocked && (
                       <button type="button" onClick={() => { setShowOptionsMenu(false); toggleMobileToolbar() }}
                         className="w-full flex items-center gap-2 px-3 h-11 text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)] transition-colors">
                         <IoOptionsOutline className="w-4 h-4" aria-hidden="true" />
@@ -865,6 +869,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
       {pages.length > 1 && (
         <PageTabs
+          readOnly={!canEditNote}
           noteId={note.id}
           pages={pages}
           activePageId={activePageId}
@@ -889,7 +894,8 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
           content={localContent}
           onChange={handleContentChange}
           placeholder={t('editor.placeholder')}
-          readOnly={activePage?.isLocked ?? false}
+          readOnly={!canEditNote || (activePage?.isLocked ?? false)}
+          liveRevision={liveRevision}
           onEditorReady={rememberEditor}
         />
       </div>

@@ -14,7 +14,7 @@ import { parse as parseCookies } from 'cookie'
 import { env } from '../config/env.js'
 import { sharingService } from '../services/sharing.service.js'
 import { tokenService } from '../services/token.service.js'
-import { userRepository, shareRepository } from '../repositories/index.js'
+import { userRepository } from '../repositories/index.js'
 import { settingsService } from '../services/settings.service.js'
 import { SYSTEM_USERNAME } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
@@ -30,6 +30,7 @@ interface LeaveRoomPayload {
 
 interface ContentChangePayload {
   noteId: string
+  pageId?: string | null
   content: string
   title: string
 }
@@ -167,24 +168,23 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
 
     // Store userId on socket for targeted notifications
     socketUserMap.set(socket.id, user.userId)
+    let roomRequest = 0
 
     // Join a note room
     socket.on('join-room', async (payload: JoinRoomPayload) => {
       const { noteId } = payload
+      const request = ++roomRequest
 
       // Verify access permission
       const hasAccess = await canAccessNote(user.userId, noteId)
+      if (!socket.connected || request !== roomRequest) return
       if (!hasAccess) {
         socket.emit('error', { message: 'Access denied' })
         return
       }
 
-      // Defense in depth: only create a collaboration room if the note
-      // is actually shared with someone. Unshared notes don't need rooms.
-      const noteShares = await shareRepository.findByResource(noteId, 'note')
-      if (noteShares.length === 0) {
-        return
-      }
+      // Private notes also need rooms for the owner's other devices. Access was
+      // checked above; knowing a note ID alone never grants room membership.
       if (!socket.connected) return
 
       const roomId = getRoomId(noteId)
@@ -237,10 +237,11 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     // Leave a note room
     socket.on('leave-room', (payload: LeaveRoomPayload) => {
       const { noteId } = payload
+      ++roomRequest
       const roomId = getRoomId(noteId)
 
       socket.leave(roomId)
-      socketToRoom.delete(socket.id)
+      if (socketToRoom.get(socket.id) === noteId) socketToRoom.delete(socket.id)
 
       const roomState = roomUsers.get(noteId)
       if (roomState) {
@@ -274,6 +275,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
       // Broadcast to other users in the room
       socket.to(roomId).emit('content-update', {
         noteId,
+        pageId: payload.pageId ?? null,
         content,
         title,
         fromUser: {

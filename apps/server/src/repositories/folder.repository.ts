@@ -1,4 +1,4 @@
-import { eq, and, isNull, sql, gt, gte, lt, lte, asc } from 'drizzle-orm'
+import { eq, and, isNull, sql, gt, gte, lt, lte, asc, inArray } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db, schema } from '../db/index.js'
 import { decrypt } from '../utils/crypto.js'
@@ -7,6 +7,12 @@ import type { Folder, FolderCreateInput, FolderUpdateInput, FolderWithChildren, 
 const { folders, notes, noteTags } = schema
 
 export class FolderRepository {
+  async findByIds(ids: string[]): Promise<Folder[]> {
+    if (!ids.length) return []
+    const rows = await db.select().from(folders).where(inArray(folders.id, ids))
+      .orderBy(asc(folders.position), asc(folders.name))
+    return rows.map(this.mapToFolder)
+  }
   async findById(id: string): Promise<Folder | null> {
     const result = await db.select().from(folders).where(eq(folders.id, id)).limit(1)
     return result[0] ? this.mapToFolder(result[0]) : null

@@ -18,7 +18,8 @@ vi.mock('../../server/src/repositories/index.js', () => ({
   shareRepository: { findByResource: async () => [{ id: 'share' }] },
 }))
 vi.mock('../../server/src/services/sharing.service.js', () => ({ sharingService: {
-  getPermissionLevel: async (user: string, note: string) => note !== 'shared' ? null : user === 'reader' ? 'read' : 'edit',
+  getPermissionLevel: async (user: string, note: string) => note === 'private-owner' && user === 'alice' ? 'owner'
+    : note !== 'shared' ? null : user === 'reader' ? 'read' : 'edit',
 } }))
 
 const http = createServer()
@@ -51,6 +52,23 @@ afterAll(async () => {
 })
 
 describe('Two-client collaboration connection', () => {
+  it('syncs two sessions of the same user on a private note and preserves the page ID', async () => {
+    const first = client('alice', 'polling')
+    const second = client('alice', 'websocket')
+    for (const socket of [first, second]) {
+      socket.on('connect', () => socket.emit('join-room', { noteId: 'private-owner' }))
+      const joined = event(socket, 'room-joined')
+      socket.connect()
+      await joined
+    }
+    const update = event<{ content: string; pageId: string; fromUser: { id: string } }>(second, 'content-update')
+    first.emit('content-change', { noteId: 'private-owner', pageId: 'page-2', title: 'Own note', content: '<p>Other device</p>' })
+    expect(await update).toMatchObject({ content: '<p>Other device</p>', pageId: 'page-2', fromUser: { id: 'alice' } })
+    const reverse = event<{ title: string }>(first, 'content-update')
+    second.emit('content-change', { noteId: 'private-owner', title: 'Renamed on phone', content: '<p>Updated</p>' })
+    expect((await reverse).title).toBe('Renamed on phone')
+    first.disconnect(); second.disconnect()
+  })
   it('joins immediately after delayed authentication, across polling and WebSocket clients', async () => {
     const first = client('alice', 'polling')
     const second = client('bob', 'websocket')

@@ -1,3 +1,5 @@
+import type { Folder } from './folder.js'
+
 export type Permission = 'read' | 'edit' | 'admin'
 export type ResourceType = 'note' | 'folder' | 'workspace'
 
@@ -36,6 +38,11 @@ export interface ShareCreateInput {
   resourceType: ResourceType
   username: string
   permission: Permission
+}
+
+export interface SharedFolder extends Folder {
+  permission: Permission
+  sharedBy: ShareWithOwner['owner']
 }
 
 export interface Collaborator {

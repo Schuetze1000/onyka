@@ -68,6 +68,12 @@ router.post('/', async (req, res, next) => {
   }
 })
 
+router.get('/shared-with-me', async (req, res, next) => {
+  try {
+    res.json({ folders: await foldersService.getSharedWithMe(req.userId!) })
+  } catch (error) { next(error) }
+})
+
 router.get('/:id', async (req, res, next) => {
   try {
     const folder = await foldersService.getById(req.params.id, req.userId!)

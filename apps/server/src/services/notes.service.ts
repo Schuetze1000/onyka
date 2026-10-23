@@ -1,5 +1,6 @@
 import { noteRepository, type NoteFilters } from '../repositories/note.repository.js'
 import { shareRepository } from '../repositories/share.repository.js'
+import { folderRepository } from '../repositories/folder.repository.js'
 import { tagRepository } from '../repositories/tag.repository.js'
 import { userRepository } from '../repositories/user.repository.js'
 import { noteUploadRepository } from '../repositories/note-upload.repository.js'
@@ -21,6 +22,14 @@ export class NotesServiceError extends Error {
 
 export class NotesService {
   async create(ownerId: string, input: NoteCreateInput): Promise<Note> {
+    if (input.folderId) {
+      const folder = await folderRepository.findById(input.folderId)
+      if (!folder) throw new NotesServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
+      if (folder.ownerId !== ownerId && !await shareRepository.hasAccess(ownerId, folder.id, 'folder', 'edit')) {
+        throw new NotesServiceError('Access denied', 'ACCESS_DENIED', 403)
+      }
+      ownerId = folder.ownerId
+    }
     const note = await noteRepository.create(ownerId, input)
     await noteUploadRepository.syncFromNoteContent(note.id, note.content)
     searchService.indexNote(note)
@@ -72,6 +81,15 @@ export class NotesService {
     }
 
     // Track words written for stats if tracking is enabled (fire and forget)
+    if (input.folderId !== undefined && input.folderId !== note.folderId) {
+      // Moving a shared note out must not silently grant access elsewhere or
+      // remove it from the owner's workspace.
+      if (note.ownerId !== userId) throw new NotesServiceError('Access denied', 'ACCESS_DENIED', 403)
+      if (input.folderId) {
+        const target = await folderRepository.findById(input.folderId)
+        if (!target || target.ownerId !== note.ownerId) throw new NotesServiceError('Access denied', 'ACCESS_DENIED', 403)
+      }
+    }
     if (input.content !== undefined && input.content !== note.content) {
       const newContent = input.content
       const noteOwnerId = note.ownerId

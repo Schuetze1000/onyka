@@ -15,6 +15,7 @@ interface UserPresence {
 
 interface ContentUpdate {
   noteId: string
+  pageId?: string | null
   content: string
   title: string
   fromUser: {
@@ -33,7 +34,7 @@ interface UseCollaborationOptions {
 interface UseCollaborationReturn {
   isConnected: boolean
   users: UserPresence[]
-  sendContentChange: (content: string, title: string) => void
+  sendContentChange: (content: string, title: string, pageId?: string | null) => void
   sendCursorUpdate: (position: { from: number; to: number } | null) => void
 }
 
@@ -86,14 +87,14 @@ export function useCollaboration({
 
     const handleRoomJoined = (data: { noteId: string; users: UserPresence[] }) => {
       if (data.noteId === noteIdRef.current) {
-        const otherUsers = data.users.filter(u => u.id !== user.id)
+        const otherUsers = data.users.filter(u => u.socketId !== socket.id)
         setUsers(otherUsers)
         onUsersChangeRef.current?.(otherUsers)
       }
     }
 
     const handleUserJoined = (userData: UserPresence) => {
-      if (userData.id === user.id) return
+      if (userData.socketId === socket.id) return
       setUsers(prev => {
         if (prev.some(u => u.socketId === userData.socketId)) return prev
         const updated = [...prev, userData]
@@ -112,13 +113,13 @@ export function useCollaboration({
     }
 
     const handleContentUpdate = (update: ContentUpdate) => {
-      if (update.noteId === noteIdRef.current && update.fromUser.id !== user.id) {
+      if (update.noteId === noteIdRef.current) {
         onContentUpdateRef.current?.(update)
       }
     }
 
     const handleCursorMoved = debounce((data: { socketId: string; userId: string; name: string; position: { from: number; to: number } | null }) => {
-      if (data.userId === user.id) return
+      if (data.socketId === socket.id) return
       setUsers(prev => {
         const updated = prev.map(u =>
           u.socketId === data.socketId
@@ -164,10 +165,11 @@ export function useCollaboration({
   }, [noteId, enabled, user])
 
   const sendContentChangeRef = useRef(
-    debounce((targetNoteId: string, content: string, title: string) => {
+    debounce((targetNoteId: string, content: string, title: string, pageId: string | null) => {
       if (socketRef.current?.connected) {
         socketRef.current.emit('content-change', {
           noteId: targetNoteId,
+          pageId,
           content,
           title,
         })
@@ -175,8 +177,8 @@ export function useCollaboration({
     }, 150)
   )
 
-  const sendContentChange = useCallback((content: string, title: string) => {
-    if (enabled) sendContentChangeRef.current(noteId, content, title)
+  const sendContentChange = useCallback((content: string, title: string, pageId: string | null = null) => {
+    if (enabled) sendContentChangeRef.current(noteId, content, title, pageId)
   }, [noteId, enabled])
 
   const sendCursorUpdateRef = useRef(

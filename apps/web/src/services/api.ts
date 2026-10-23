@@ -15,6 +15,7 @@ import type {
   TagUpdateInput,
   ShareWithUser,
   ShareWithOwner,
+  SharedFolder,
   ShareCreateInput,
   Permission,
   Collaborator,
@@ -380,6 +381,7 @@ export interface FolderTreeItem extends Folder {
 }
 
 export const foldersApi = {
+  sharedWithMe: () => request<{ folders: SharedFolder[] }>('/folders/shared-with-me'),
   list: () => request<{ folders: Folder[] }>('/folders'),
 
   tree: () => request<{ tree: FolderTreeItem[]; rootNotes: FolderNote[] }>('/folders/tree'),

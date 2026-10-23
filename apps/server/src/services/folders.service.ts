@@ -1,7 +1,8 @@
 import { shareRepository } from '../repositories/share.repository.js'
+import { sharingService } from './sharing.service.js'
 import { folderRepository } from '../repositories/folder.repository.js'
 import { noteRepository } from '../repositories/note.repository.js'
-import type { Folder, FolderCreateInput, FolderUpdateInput, FolderWithChildren, FolderNote, FolderReorderInput, NoteReorderInput, Note } from '@onyka/shared'
+import type { Folder, FolderCreateInput, FolderUpdateInput, FolderWithChildren, FolderNote, FolderReorderInput, NoteReorderInput, Note, SharedFolder } from '@onyka/shared'
 
 export class FoldersServiceError extends Error {
   constructor(
@@ -23,9 +24,12 @@ export class FoldersService {
       if (!parent) {
         throw new FoldersServiceError('Parent folder not found', 'PARENT_NOT_FOUND', 404)
       }
-      if (parent.ownerId !== ownerId) {
+      if (parent.ownerId !== ownerId && !await shareRepository.hasAccess(ownerId, parent.id, 'folder', 'edit')) {
         throw new FoldersServiceError('Access denied', 'ACCESS_DENIED', 403)
       }
+
+      // Children belong to the folder's workspace so the whole group inherits access.
+      ownerId = parent.ownerId
 
       const parentDepth = await this.getDepth(input.parentId)
       if (parentDepth + 1 > MAX_FOLDER_DEPTH) {
@@ -56,6 +60,16 @@ export class FoldersService {
 
   async list(userId: string): Promise<Folder[]> {
     return folderRepository.findByOwner(userId)
+  }
+
+  async getSharedWithMe(userId: string): Promise<SharedFolder[]> {
+    const grants = (await sharingService.getSharedWithMe(userId)).filter(s => s.resourceType === 'folder')
+    const folders = await folderRepository.findByIds(grants.map(s => s.resourceId))
+    const byId = new Map(grants.map(s => [s.resourceId, s]))
+    return folders.flatMap(folder => {
+      const grant = byId.get(folder.id)
+      return grant ? [{ ...folder, permission: grant.permission, sharedBy: grant.owner }] : []
+    })
   }
 
   async getTree(userId: string): Promise<FolderWithChildren[]> {

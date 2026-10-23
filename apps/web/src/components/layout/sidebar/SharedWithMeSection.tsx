@@ -7,6 +7,8 @@ import {
   IoEllipsisHorizontal,
   IoCreateOutline,
 } from 'react-icons/io5'
+import { SharedFolderItem } from './SharedFolderItem'
+import type { SharedFolder } from '@onyka/shared'
 import { ShareDialog } from '@/components/features'
 import { useSharesStore, type SharedNote } from '@/stores/shares'
 import { useThemeStore } from '@/stores/theme'
@@ -124,7 +126,7 @@ function SharedNoteItem({
         openMenu(e.clientX, e.clientY)
       }}
       className={`
-        group w-full flex items-center gap-2 px-2.5 py-1 rounded-lg relative
+        group w-full flex items-center gap-2 px-2.5 py-1 min-h-11 md:min-h-0 rounded-lg relative
         text-left transition-all duration-150 ease-out cursor-pointer
         ${isSelected
           ? 'bg-[var(--color-accent)]/10 text-[var(--color-text-primary)]'
@@ -156,7 +158,8 @@ function SharedNoteItem({
               openMenu(rect.right - 140, rect.bottom + 4)
             }
           }}
-          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--color-bg-elevated)] transition-opacity"
+          aria-label={t('common.more_options')}
+          className="opacity-100 md:opacity-0 group-hover:opacity-100 min-w-8 min-h-8 p-0.5 rounded hover:bg-[var(--color-bg-elevated)] transition-opacity"
         >
           <IoEllipsisHorizontal className="w-3 h-3" />
         </button>
@@ -207,7 +210,7 @@ function SharedNoteItem({
 
 export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWithMeSectionProps) {
   const { t } = useTranslation()
-  const { sharedWithMe, isLoadingSharedWithMe, fetchSharedWithMe } = useSharesStore()
+  const { sharedWithMe, sharedFolders, sharedLoadError, isLoadingSharedWithMe, fetchSharedWithMe } = useSharesStore()
   const { sharedCollapsed, toggleSharedCollapsed, sharedSectionHeight, setSharedSectionHeight } = useThemeStore()
   const [expandedOwners, setExpandedOwners] = useState<Set<string>>(new Set())
   const [isResizing, setIsResizing] = useState(false)
@@ -223,12 +226,17 @@ export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWith
       acc[ownerId] = {
         owner: note.sharedBy,
         notes: [],
+        folders: [],
       }
     }
     acc[ownerId].notes.push(note)
     return acc
-  }, {} as Record<string, { owner: SharedNote['sharedBy']; notes: SharedNote[] }>)
+  }, {} as Record<string, { owner: SharedNote['sharedBy']; notes: SharedNote[]; folders: SharedFolder[] }>)
 
+  for (const folder of sharedFolders) {
+    const group = notesByOwner[folder.sharedBy.id] ??= { owner: folder.sharedBy, notes: [], folders: [] }
+    group.folders.push(folder)
+  }
   const ownerGroups = Object.values(notesByOwner)
 
   useEffect(() => {
@@ -287,7 +295,7 @@ export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWith
     }
   }, [isResizing, setSharedSectionHeight])
 
-  if (!isLoadingSharedWithMe && sharedWithMe.length === 0) {
+  if (!isLoadingSharedWithMe && !sharedLoadError && sharedWithMe.length === 0 && sharedFolders.length === 0) {
     return null
   }
 
@@ -359,7 +367,7 @@ export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWith
               : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-tertiary)]'
             }
           `}>
-            {sharedWithMe.length}
+            {sharedWithMe.length + sharedFolders.length}
           </span>
         </div>
 
@@ -390,11 +398,12 @@ export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWith
             </div>
           ) : (
             <div className="space-y-0.5">
-              {ownerGroups.map(({ owner, notes }) => (
+              {sharedLoadError && <button type="button" onClick={() => void fetchSharedWithMe()} className="w-full min-h-11 px-3 text-sm text-[var(--color-error)]">{t('common.retry')}</button>}
+              {ownerGroups.map(({ owner, notes, folders }) => (
                 <div key={owner.id}>
                   <button
                     onClick={() => toggleOwner(owner.id)}
-                    className="w-full flex items-center gap-2 px-1 py-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors rounded-md hover:bg-[var(--color-bg-tertiary)]/50"
+                    className="w-full min-h-11 md:min-h-0 flex items-center gap-2 px-1 py-1 text-[12px] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-secondary)] transition-colors rounded-md hover:bg-[var(--color-bg-tertiary)]/50"
                   >
                     <IoChevronDown className={`
                       w-2.5 h-2.5 transition-transform duration-200
@@ -415,13 +424,19 @@ export function SharedWithMeSection({ selectedNoteId, onSelectNote }: SharedWith
                       {owner.username}
                     </span>
                     <span className="text-[11px] text-[var(--color-text-tertiary)]">
-                      {notes.length}
+                      {notes.length + folders.length}
                     </span>
                   </button>
 
                   {expandedOwners.has(owner.id) && (
                     <div className="ml-3 space-y-px">
-                      {notes.map(note => (
+                      {folders.filter(folder => !folders.some(parent => parent.id === folder.parentId)).map(folder => (
+                        <SharedFolderItem key={folder.id} folder={folder} folders={folders} notes={notes}
+                          selectedNoteId={selectedNoteId} onSelectNote={onSelectNote} onRefresh={fetchSharedWithMe}
+                          renderNote={note => <SharedNoteItem key={note.id} note={note} isSelected={selectedNoteId === note.id}
+                            onSelect={() => onSelectNote(note.id)} onNoteUpdated={fetchSharedWithMe} />} />
+                      ))}
+                      {notes.filter(note => !folders.some(folder => folder.id === note.folderId)).map(note => (
                         <SharedNoteItem
                           key={note.id}
                           note={note}

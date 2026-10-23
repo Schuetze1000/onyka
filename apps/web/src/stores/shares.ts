@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { Note, ShareWithUser, ShareWithOwner, Permission } from '@onyka/shared'
-import { notesApi, sharesApi } from '@/services/api'
+import type { Note, SharedFolder, ShareWithUser, ShareWithOwner, Permission } from '@onyka/shared'
+import { notesApi, foldersApi, sharesApi } from '@/services/api'
 
 export interface SharedNote extends Note {
   sharedBy: {
@@ -15,6 +15,8 @@ export interface SharedNote extends Note {
 
 interface SharesState {
   sharedWithMe: SharedNote[]
+  sharedFolders: SharedFolder[]
+  sharedLoadError: boolean
   isLoadingSharedWithMe: boolean
   myShares: ShareWithUser[]
   isLoadingMyShares: boolean
@@ -30,6 +32,8 @@ export const useSharedFolderIds = () =>
 
 export const useSharesStore = create<SharesState>((set, get) => ({
   sharedWithMe: [],
+  sharedFolders: [],
+  sharedLoadError: false,
   isLoadingSharedWithMe: false,
 
   myShares: [],
@@ -37,18 +41,19 @@ export const useSharesStore = create<SharesState>((set, get) => ({
   sharedFolderIds: new Set<string>(),
 
   fetchSharedWithMe: async () => {
-    set({ isLoadingSharedWithMe: true })
+    set({ isLoadingSharedWithMe: true, sharedLoadError: false })
     try {
-      const [notesResult, sharesResult] = await Promise.all([
+      const [notesResult, sharesResult, foldersResult] = await Promise.all([
         notesApi.sharedWithMe(),
         sharesApi.sharedWithMe(),
+        foldersApi.sharedWithMe(),
       ])
 
       const { notes } = notesResult
       const { shares } = sharesResult
 
       const sharedNotes: SharedNote[] = notes.map(note => {
-        const share = shares.find((s: ShareWithOwner) => s.resourceId === note.id)
+        const share = shares.find((s: ShareWithOwner) => s.resourceType === 'note' && s.resourceId === note.id)
         return {
           ...note,
           sharedBy: share?.owner ?? {
@@ -60,10 +65,10 @@ export const useSharesStore = create<SharesState>((set, get) => ({
         }
       })
 
-      set({ sharedWithMe: sharedNotes, isLoadingSharedWithMe: false })
+      set({ sharedWithMe: sharedNotes, sharedFolders: foldersResult.folders, isLoadingSharedWithMe: false })
     } catch (err) {
       console.error('Failed to fetch shared notes:', err)
-      set({ isLoadingSharedWithMe: false })
+      set({ isLoadingSharedWithMe: false, sharedLoadError: true })
     }
   },
 

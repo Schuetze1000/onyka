@@ -8,6 +8,7 @@ import {
   IoOptionsOutline, IoListOutline, IoCheckboxOutline, IoChatbubbleOutline,
   IoCodeOutline, IoLinkOutline, IoImageOutline, IoGridOutline,
   IoRemoveOutline, IoCloseOutline, IoTextOutline, IoAddOutline,
+  IoReturnDownForwardOutline, IoReturnUpBackOutline,
 } from 'react-icons/io5'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useEditorToolbarDock } from '@/hooks/useEditorToolbarDock'
@@ -224,6 +225,19 @@ export function EditorToolbar({ editor, onInsertImage, isUploadingImage }: Edito
           {docked ? <IoChevronDownOutline aria-hidden="true" /> : <IoChevronUpOutline aria-hidden="true" />}
         </button>
       </div>
+
+      {mobile && (state.bulletList || state.orderedList || state.taskList) && (
+        <div className="editor-format-list-level" role="group" aria-label={t('editor.toolbar.list_level')}>
+          <ToolButton label={t('editor.toolbar.outdent')} disabled={!state.canOutdent}
+            onClick={() => editor.chain().focus().liftListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
+            <IoReturnUpBackOutline />
+          </ToolButton>
+          <ToolButton label={t('editor.toolbar.indent')} disabled={!state.canIndent}
+            onClick={() => editor.chain().focus().sinkListItem(state.taskList ? 'taskItem' : 'listItem').run()}>
+            <IoReturnDownForwardOutline />
+          </ToolButton>
+        </div>
+      )}
 
       <AnimatePresence initial={false}>
         {expanded && (

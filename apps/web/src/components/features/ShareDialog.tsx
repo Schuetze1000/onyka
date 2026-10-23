@@ -244,7 +244,7 @@ export function ShareDialog({
                 {t('share.title')}
               </h2>
               <p className="text-xs text-[var(--color-text-tertiary)]">
-                {t('share.description')}
+                {t(resourceType === 'folder' ? 'share.folder_description' : 'share.description')}
               </p>
             </div>
           </div>

@@ -230,6 +230,7 @@
   "share": {
     "title": "Zusammenarbeiten",
     "description": "Lade andere Personen ein, gemeinsam an dieser Notiz zu arbeiten.",
+    "folder_description": "Die Freigabe gilt auch für alle Unterordner und Notizen, einschließlich neuer Inhalte.",
     "share_with": "Teilen mit",
     "username_placeholder": "Benutzername",
     "permission": "Berechtigung",

@@ -1,4 +1,4 @@
-import { eq, and, or } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db, schema } from '../db/index.js'
 import type { Share, ShareWithUser, Permission, ResourceType, ShareCreateInput } from '@onyka/shared'
@@ -6,6 +6,48 @@ import type { Share, ShareWithUser, Permission, ResourceType, ShareCreateInput }
 const { shares, users, notes, noteUploads } = schema
 
 export class ShareRepository {
+  /** Expand grants at query time: moves, new children and revocations take effect immediately.
+   * UNION also terminates safely if a corrupt folder hierarchy contains a cycle.
+   * Never inherit across resource owners, even if a foreign folder ID was stored.
+   */
+  private effectiveResources(userId?: string) {
+    return sql`WITH RECURSIVE grants(id, resource_id, resource_type, owner_id, shared_with_id, permission, created_at) AS (
+      SELECT id, resource_id, resource_type, owner_id, shared_with_id, permission, created_at
+      FROM shares ${userId ? sql`WHERE shared_with_id = ${userId}` : sql``}
+      UNION
+      SELECT g.id, f.id, 'folder', g.owner_id, g.shared_with_id, g.permission, g.created_at
+      FROM grants g JOIN folders f ON g.resource_type = 'folder'
+        AND f.parent_id = g.resource_id AND f.owner_id = g.owner_id
+      UNION
+      SELECT g.id, n.id, 'note', g.owner_id, g.shared_with_id, g.permission, g.created_at
+      FROM grants g JOIN notes n ON g.resource_type = 'folder'
+        AND n.folder_id = g.resource_id AND n.owner_id = g.owner_id
+    )`
+  }
+
+  async findEffectiveBySharedWith(userId: string): Promise<Share[]> {
+    const rows = await db.all<{
+      id: string; resourceId: string; resourceType: ResourceType; ownerId: string;
+      sharedWithId: string; permission: Permission; createdAt: number
+    }>(sql`${this.effectiveResources(userId)}
+      SELECT id, resource_id AS resourceId, resource_type AS resourceType,
+        owner_id AS ownerId, shared_with_id AS sharedWithId, permission, created_at AS createdAt
+      FROM grants ORDER BY CASE permission WHEN 'admin' THEN 3 WHEN 'edit' THEN 2 ELSE 1 END DESC`)
+    const resources = new Map<string, Share>()
+    for (const row of rows) {
+      const key = `${row.resourceType}:${row.resourceId}`
+      if (!resources.has(key)) resources.set(key, { ...row, createdAt: new Date(row.createdAt * 1000) })
+    }
+    return [...resources.values()]
+  }
+
+  async getEffectivePermission(userId: string, resourceId: string, resourceType: ResourceType): Promise<Permission | null> {
+    const rows = await db.all<{ permission: Permission }>(sql`${this.effectiveResources(userId)}
+      SELECT permission FROM grants WHERE resource_id = ${resourceId} AND resource_type = ${resourceType}
+      ORDER BY CASE permission WHEN 'admin' THEN 3 WHEN 'edit' THEN 2 ELSE 1 END DESC LIMIT 1`)
+    return rows[0]?.permission ?? null
+  }
+
   async findById(id: string): Promise<Share | null> {
     const result = await db.select().from(shares).where(eq(shares.id, id)).limit(1)
     return result[0] ? this.mapToShare(result[0]) : null
@@ -188,51 +230,19 @@ export class ShareRepository {
       admin: 3,
     }
 
-    const result = await db
-      .select({ permission: shares.permission })
-      .from(shares)
-      .where(
-        and(
-          eq(shares.resourceId, resourceId),
-          eq(shares.resourceType, resourceType),
-          eq(shares.sharedWithId, userId)
-        )
-      )
-      .limit(1)
-
-    if (!result[0]) return false
-
-    return (
-      permissionLevels[result[0].permission as Permission] >=
-      permissionLevels[requiredPermission]
-    )
+    const permission = await this.getEffectivePermission(userId, resourceId, resourceType)
+    return permission !== null && permissionLevels[permission] >= permissionLevels[requiredPermission]
   }
 
-  /**
-   * True if `userId` can read at least one note that references this upload.
-   * Ownership of the upload itself must be checked separately by the caller.
-   */
+  /** Upload access follows the same live folder inheritance as the note itself. */
   async hasAccessToUpload(userId: string, filename: string): Promise<boolean> {
-    const result = await db
-      .select({ noteId: noteUploads.noteId })
-      .from(noteUploads)
-      .innerJoin(notes, eq(notes.id, noteUploads.noteId))
-      .leftJoin(
-        shares,
-        and(
-          eq(shares.resourceId, notes.id),
-          eq(shares.resourceType, 'note'),
-          eq(shares.sharedWithId, userId)
-        )
-      )
-      .where(
-        and(
-          eq(noteUploads.filename, filename),
-          or(eq(notes.ownerId, userId), eq(shares.sharedWithId, userId))
-        )
-      )
-      .limit(1)
-    return result.length > 0
+    const references = await db.select({ noteId: notes.id, ownerId: notes.ownerId })
+      .from(noteUploads).innerJoin(notes, eq(notes.id, noteUploads.noteId))
+      .where(and(eq(noteUploads.filename, filename), eq(notes.isDeleted, false)))
+    for (const reference of references) {
+      if (reference.ownerId === userId || await this.hasAccess(userId, reference.noteId, 'note')) return true
+    }
+    return false
   }
 
   private mapToShare(row: typeof shares.$inferSelect): Share {

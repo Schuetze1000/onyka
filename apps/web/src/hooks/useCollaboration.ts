@@ -38,13 +38,15 @@ interface UseCollaborationReturn {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T & { cancel: () => void } {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return ((...args: any[]) => {
+  const debounced = ((...args: any[]) => {
     if (timeoutId) clearTimeout(timeoutId)
     timeoutId = setTimeout(() => fn(...args), delay)
-  }) as T
+  }) as T & { cancel: () => void }
+  debounced.cancel = () => { if (timeoutId) clearTimeout(timeoutId); timeoutId = null }
+  return debounced
 }
 
 export function useCollaboration({
@@ -70,6 +72,7 @@ export function useCollaboration({
 
   useEffect(() => {
     setUsers([])
+    setIsConnected(false)
     onUsersChangeRef.current?.([])
 
     if (!enabled || !noteId || !user) return
@@ -142,6 +145,10 @@ export function useCollaboration({
     socket.on('disconnect', handleDisconnect)
 
     return () => {
+      sendContentChangeRef.current.cancel()
+      sendCursorUpdateRef.current.cancel()
+      handleCursorMoved.cancel()
+      socketRef.current = null
       socket.off('room-joined', handleRoomJoined)
       socket.off('user-joined', handleUserJoined)
       socket.off('user-left', handleUserLeft)
@@ -157,10 +164,10 @@ export function useCollaboration({
   }, [noteId, enabled, user])
 
   const sendContentChangeRef = useRef(
-    debounce((content: string, title: string) => {
+    debounce((targetNoteId: string, content: string, title: string) => {
       if (socketRef.current?.connected) {
         socketRef.current.emit('content-change', {
-          noteId: noteIdRef.current,
+          noteId: targetNoteId,
           content,
           title,
         })
@@ -169,14 +176,14 @@ export function useCollaboration({
   )
 
   const sendContentChange = useCallback((content: string, title: string) => {
-    sendContentChangeRef.current(content, title)
-  }, [])
+    if (enabled) sendContentChangeRef.current(noteId, content, title)
+  }, [noteId, enabled])
 
   const sendCursorUpdateRef = useRef(
-    debounce((position: { from: number; to: number } | null) => {
+    debounce((targetNoteId: string, position: { from: number; to: number } | null) => {
       if (socketRef.current?.connected) {
         socketRef.current.emit('cursor-update', {
-          noteId: noteIdRef.current,
+          noteId: targetNoteId,
           position,
         })
       }
@@ -184,8 +191,8 @@ export function useCollaboration({
   )
 
   const sendCursorUpdate = useCallback((position: { from: number; to: number } | null) => {
-    sendCursorUpdateRef.current(position)
-  }, [])
+    if (enabled) sendCursorUpdateRef.current(noteId, position)
+  }, [noteId, enabled])
 
   return {
     isConnected,

@@ -90,7 +90,7 @@ async function refreshToken(retryCount = 0): Promise<boolean> {
   }
 }
 
-async function handleTokenRefresh(): Promise<boolean> {
+export async function handleTokenRefresh(): Promise<boolean> {
   if (isRefreshing && refreshPromise) {
     return refreshPromise
   }

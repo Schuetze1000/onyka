@@ -3,6 +3,7 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { nanoid } from 'nanoid'
 import { eq, and } from 'drizzle-orm'
+import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import * as schema from '../../db/schema.js'
 
 let sqlite: Database.Database
@@ -63,6 +64,18 @@ beforeAll(() => {
       FOREIGN KEY (shared_with_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `)
+
+  // This legacy fixture predates additive profile and editor columns. Drizzle
+  // includes those columns in inserts even when a test does not set them.
+  for (const table of [schema.users, schema.notes, schema.folders]) {
+    const { name, columns } = getTableConfig(table)
+    const existing = new Set((sqlite.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map(c => c.name))
+    for (const column of columns) {
+      if (!existing.has(column.name)) {
+        sqlite.exec(`ALTER TABLE "${name}" ADD COLUMN "${column.name}" ${column.getSQLType()}`)
+      }
+    }
+  }
 
   // Create test users
   ownerUserId = nanoid()

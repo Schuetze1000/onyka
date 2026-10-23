@@ -148,15 +148,22 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
   // Store global instance for external notifications
   ioInstance = io
 
-  io.on('connection', async (socket) => {
-    // Authenticate user
+  // Complete authentication before acknowledging the connection. Otherwise an early
+  // join-room event can arrive while authentication is awaiting the database.
+  io.use(async (socket, next) => {
     const user = await authenticateSocket(socket)
     if (!user) {
-      logger.warn('[WebSocket] Auth failed for socket', { socketId: socket.id })
-      socket.emit('auth-error', { message: 'Authentication required' })
-      socket.disconnect()
+      const error = new Error('Authentication required') as Error & { data: { code: string } }
+      error.data = { code: 'AUTH_REQUIRED' }
+      next(error)
       return
     }
+    socket.data.user = user
+    next()
+  })
+
+  io.on('connection', (socket) => {
+    const user = socket.data.user as NonNullable<Awaited<ReturnType<typeof authenticateSocket>>>
 
     // Store userId on socket for targeted notifications
     socketUserMap.set(socket.id, user.userId)
@@ -178,6 +185,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
       if (noteShares.length === 0) {
         return
       }
+      if (!socket.connected) return
 
       const roomId = getRoomId(noteId)
 
@@ -248,6 +256,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     // Content change - broadcast to others in the room (last-write-wins)
     socket.on('content-change', async (payload: ContentChangePayload) => {
       const { noteId, content, title } = payload
+      if (socketToRoom.get(socket.id) !== noteId) return
 
       // Verify access
       const hasAccess = await canAccessNote(user.userId, noteId)
@@ -258,6 +267,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
       if (permission !== 'owner' && permission !== 'edit' && permission !== 'admin') {
         return
       }
+      if (socketToRoom.get(socket.id) !== noteId) return
 
       const roomId = getRoomId(noteId)
 
@@ -274,8 +284,11 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     })
 
     // Cursor position update
-    socket.on('cursor-update', (payload: CursorPayload) => {
+    socket.on('cursor-update', async (payload: CursorPayload) => {
       const { noteId, position } = payload
+      if (socketToRoom.get(socket.id) !== noteId) return
+      if (!await canAccessNote(user.userId, noteId)) return
+      if (socketToRoom.get(socket.id) !== noteId) return
       const roomId = getRoomId(noteId)
 
       // Update presence

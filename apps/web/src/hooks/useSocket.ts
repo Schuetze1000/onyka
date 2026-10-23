@@ -1,6 +1,7 @@
 /** Shared WebSocket connection singleton used by collaboration and notification hooks. */
 
 import { io, Socket } from 'socket.io-client'
+import { handleTokenRefresh } from '@/services/api'
 
 let socket: Socket | null = null
 
@@ -11,7 +12,9 @@ export function getSharedSocket(): Socket {
   socket = io(window.location.origin, {
     path: '/socket.io',
     withCredentials: true,
-    transports: ['websocket', 'polling'],
+    // Establish a session through ordinary HTTP first; upgrade when the proxy
+    // supports WebSockets. This also works behind hosts without an upgrade rule.
+    transports: ['polling', 'websocket'],
     reconnection: true,
     reconnectionAttempts: 20,
     reconnectionDelay: 1000,
@@ -22,13 +25,12 @@ export function getSharedSocket(): Socket {
     console.log('[Socket] Connected:', socket!.id)
   })
 
-  socket.on('connect_error', (error) => {
+  const currentSocket = socket
+  socket.on('connect_error', async (error: Error & { data?: { code?: string } }) => {
     console.error('[Socket] Connection error:', error.message)
-  })
-
-  socket.on('auth-error', () => {
-    console.warn('[Socket] Authentication failed')
-    // Keep connected: user may re-authenticate and the socket will reconnect
+    if (error.data?.code === 'AUTH_REQUIRED' && await handleTokenRefresh()) {
+      if (socket === currentSocket) currentSocket.connect()
+    }
   })
 
   socket.on('disconnect', (reason) => {

@@ -76,7 +76,15 @@ export class SharingService {
   }
 
   async getSharedWithMe(userId: string): Promise<(Share & { owner: { id: string; username: string; name: string; avatarUrl?: string; avatarColor?: string } })[]> {
-    return shareRepository.findBySharedWithWithOwner(userId)
+    const [effective, direct] = await Promise.all([
+      shareRepository.findEffectiveBySharedWith(userId),
+      shareRepository.findBySharedWithWithOwner(userId),
+    ])
+    const owners = new Map(direct.map((share) => [share.ownerId, share.owner]))
+    return effective.flatMap((share) => {
+      const owner = owners.get(share.ownerId)
+      return owner ? [{ ...share, owner }] : []
+    })
   }
 
   async getMyShares(userId: string): Promise<Share[]> {
@@ -141,12 +149,7 @@ export class SharingService {
     const isOwner = await this.isOwner(userId, resourceId, resourceType)
     if (isOwner) return 'owner'
 
-    const shares = await shareRepository.findBySharedWith(userId)
-    const share = shares.find(
-      (s) => s.resourceId === resourceId && s.resourceType === resourceType
-    )
-
-    return share?.permission ?? null
+    return shareRepository.getEffectivePermission(userId, resourceId, resourceType)
   }
 
   private async verifyOwnershipOrAdmin(

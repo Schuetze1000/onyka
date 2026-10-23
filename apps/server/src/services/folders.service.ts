@@ -1,3 +1,4 @@
+import { shareRepository } from '../repositories/share.repository.js'
 import { folderRepository } from '../repositories/folder.repository.js'
 import { noteRepository } from '../repositories/note.repository.js'
 import type { Folder, FolderCreateInput, FolderUpdateInput, FolderWithChildren, FolderNote, FolderReorderInput, NoteReorderInput, Note } from '@onyka/shared'
@@ -46,7 +47,7 @@ export class FoldersService {
       throw new FoldersServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
     }
 
-    if (folder.ownerId !== userId) {
+    if (folder.ownerId !== userId && !await shareRepository.hasAccess(userId, folderId, 'folder')) {
       throw new FoldersServiceError('Access denied', 'ACCESS_DENIED', 403)
     }
 

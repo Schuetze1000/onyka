@@ -214,7 +214,7 @@ export class NotesService {
   }
 
   async getSharedWithMe(userId: string): Promise<Note[]> {
-    const shares = await shareRepository.findBySharedWith(userId)
+    const shares = await shareRepository.findEffectiveBySharedWith(userId)
     const noteShares = shares.filter((s) => s.resourceType === 'note')
 
     if (noteShares.length === 0) {

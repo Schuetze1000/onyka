@@ -230,6 +230,7 @@
   "share": {
     "title": "Collaborate",
     "description": "Invite collaborators to work together on this note.",
+    "folder_description": "Sharing includes all subfolders and notes, including new content.",
     "share_with": "Share with",
     "username_placeholder": "Username",
     "permission": "Permission",

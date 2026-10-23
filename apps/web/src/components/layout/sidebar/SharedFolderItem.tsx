@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IoAddOutline, IoChevronDown, IoDocumentTextOutline, IoFolderOutline, IoPeopleOutline } from 'react-icons/io5'
+import { IoEllipsisHorizontal, IoChevronDown, IoDocumentTextOutline, IoFolderOutline, IoPeopleOutline } from 'react-icons/io5'
 import type { SharedFolder } from '@onyka/shared'
 import { foldersApi, notesApi } from '@/services/api'
 import { ShareDialog } from '@/components/features'
@@ -19,6 +19,8 @@ interface Props {
 
 export function SharedFolderItem({ folder, folders, notes, selectedNoteId, onSelectNote, onRefresh, renderNote, ancestors = [] }: Props) {
   const { t } = useTranslation()
+  const actionsId = useId()
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(true)
   const [actionsOpen, setActionsOpen] = useState(false)
   const [creatingFolder, setCreatingFolder] = useState(false)
@@ -52,8 +54,14 @@ export function SharedFolderItem({ folder, folders, notes, selectedNoteId, onSel
   }
 
   return (
-    <div className="min-w-0">
-      <div className="flex items-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors">
+    <div className="min-w-0" onKeyDown={event => {
+      if (event.key === 'Escape' && actionsOpen) {
+        event.stopPropagation()
+        setActionsOpen(false)
+        menuButtonRef.current?.focus()
+      }
+    }}>
+      <div className="group flex items-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors">
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
           className="flex items-center gap-2 flex-1 min-w-0 min-h-11 px-2 text-left text-[13px] text-[var(--color-text-secondary)]">
           <IoChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
@@ -61,15 +69,15 @@ export function SharedFolderItem({ folder, folders, notes, selectedNoteId, onSel
           <span className="truncate flex-1">{folder.name}</span>
           <span className="text-[10px] text-[var(--color-text-tertiary)]">{t(`share.permission_badge.${folder.permission}`)}</span>
         </button>
-        {canEdit && <button type="button" aria-expanded={actionsOpen}
-          aria-label={t('share.add_to_folder', { name: folder.name })} title={t('share.add_to_folder', { name: folder.name })}
+        {canEdit && <button ref={menuButtonRef} type="button" aria-expanded={actionsOpen} aria-controls={actionsId}
+          aria-label={`${t('common.more_options')}: ${folder.name}`} title={t('common.more_options')}
           onClick={() => { setActionsOpen(!actionsOpen); setError(false) }}
-          className="w-11 h-11 shrink-0 flex items-center justify-center rounded-lg text-[var(--color-accent)] hover:bg-[var(--color-accent-muted)] transition-colors">
-          <IoAddOutline className={`w-5 h-5 transition-transform duration-200 ${actionsOpen ? 'rotate-45' : ''}`} />
+          className={`w-11 h-11 md:w-7 md:h-7 shrink-0 flex items-center justify-center rounded-lg text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-elevated)] focus-visible:opacity-100 transition-all ${actionsOpen ? 'bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]' : 'md:opacity-0 group-hover:opacity-100'}`}>
+          <IoEllipsisHorizontal className="w-4 h-4" />
         </button>}
       </div>
       {actionsOpen && canEdit && (
-        <div className="ml-3 my-1 p-1 border border-[var(--color-border)] rounded-xl bg-[var(--color-bg-secondary)] animate-fade-in">
+        <div id={actionsId} className="ml-3 my-1 p-1 border border-[var(--color-border)] rounded-xl bg-[var(--color-bg-secondary)] animate-fade-in">
           {!creatingFolder ? <>
             <button type="button" disabled={busy} onClick={() => void createNote()}
               className="w-full min-h-11 flex items-center gap-2 px-3 rounded-lg text-sm hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50">

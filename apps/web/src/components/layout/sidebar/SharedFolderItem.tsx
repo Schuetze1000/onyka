@@ -35,7 +35,9 @@ export function SharedFolderItem({ folder, folders, notes, selectedNoteId, onSel
   const [error, setError] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
   const children = folders.filter(f => f.parentId === folder.id && !ancestors.includes(f.id))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
   const containedNotes = notes.filter(n => n.folderId === folder.id)
+    .sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
   const canEdit = folder.permission !== 'read'
 
   const createNote = async () => {
@@ -97,9 +99,10 @@ export function SharedFolderItem({ folder, folders, notes, selectedNoteId, onSel
   return (
     <div className="min-w-0" aria-busy={busy}>
       <div className="group flex items-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors"
+        title={`${t('share.shared_by', { name: folder.sharedBy.name || folder.sharedBy.username })} · ${t(`share.permission_badge.${folder.permission}`)}`}
         onContextMenu={event => { event.preventDefault(); event.stopPropagation(); openMenu(event.clientX, event.clientY) }}>
         <button type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-          className="flex items-center gap-2 flex-1 min-w-0 min-h-11 px-2 text-left text-[13px] text-[var(--color-text-secondary)]">
+          className="flex items-center gap-1 flex-1 min-w-0 min-h-11 md:min-h-0 py-0.5 px-2 text-left text-sm text-[var(--color-text-secondary)]">
           <IoChevronDown className={`w-3 h-3 shrink-0 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
           {isEmoji(folder.icon) ? <span className="w-4 h-4 shrink-0 text-base leading-none">{folder.icon}</span>
             : <FolderIcon className="w-4 h-4 shrink-0 text-[var(--color-accent)]" />}

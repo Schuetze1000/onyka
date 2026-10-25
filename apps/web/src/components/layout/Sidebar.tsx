@@ -39,9 +39,10 @@ import {
   SortableFolderItem,
   SortableNoteItem,
   DragOverlayContent,
-  SharedWithMeSection,
+  SharedNoteItem,
+  SharedFolderItem,
+  buildSidebarItems,
   SelectionActionBar,
-  sortItemsAlphabetically,
   makeDragId,
   ROOT_DROP_ID,
 } from './sidebar/index'
@@ -198,7 +199,7 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
   } = useFoldersStore()
   const { sidebarCollapsed, toggleSidebar, sidebarWidth, setSidebarWidth, tagsCollapsed, toggleTagsCollapsed, tagsSectionHeight, setTagsSectionHeight, mobileSidebarOpen, closeMobileSidebar, focusMode } = useThemeStore()
   const { openQuickAdd, openDrawer, fetchStats } = useSparksStore()
-  const { fetchMyShares } = useSharesStore()
+  const { fetchMyShares, fetchSharedWithMe, sharedWithMe, sharedFolders, sharedLoadError, isLoadingSharedWithMe } = useSharesStore()
   const isMobile = useIsMobile()
 
   const [isResizing, setIsResizing] = useState(false)
@@ -280,7 +281,8 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
     fetchTags()
     fetchStats()
     fetchMyShares()
-  }, [fetchFolderTree, fetchTags, fetchStats, fetchMyShares])
+    fetchSharedWithMe()
+  }, [fetchFolderTree, fetchTags, fetchStats, fetchMyShares, fetchSharedWithMe])
 
   useEffect(() => {
     if (showNewNoteInput) {
@@ -398,12 +400,21 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
   )
 
   const rootItems = useMemo(() => {
-    return sortItemsAlphabetically(filteredFolderTree, filteredRootNotes)
-  }, [filteredFolderTree, filteredRootNotes])
+    return buildSidebarItems(filteredFolderTree, filteredRootNotes, sharedFolders, sharedWithMe)
+  }, [filteredFolderTree, filteredRootNotes, sharedFolders, sharedWithMe])
 
   const rootSortableIds = useMemo(() => {
-    return rootItems.map(item => makeDragId(item.type, item.id))
+    return rootItems.filter(item => item.source === 'owned').map(item => makeDragId(item.type, item.id))
   }, [rootItems])
+
+  const visibleSearchResults = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase()
+    if (!query) return searchResults
+    const foundIds = new Set(searchResults.map(note => note.id))
+    return [...searchResults, ...sharedWithMe
+      .filter(note => !foundIds.has(note.id) && note.title.toLocaleLowerCase().includes(query))
+      .map(note => ({ id: note.id, title: note.title, preview: '', score: 0 }))]
+  }, [searchResults, sharedWithMe, searchQuery])
 
   const handleSelectNote = (noteId: string, event?: React.MouseEvent) => {
     if (event && (event.metaKey || event.ctrlKey)) {
@@ -842,8 +853,8 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
               <div className="flex items-center justify-center py-8">
                 <div className="w-5 h-5 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
               </div>
-            ) : searchResults.length > 0 ? (
-              searchResults.map((result) => (
+            ) : visibleSearchResults.length > 0 ? (
+              visibleSearchResults.map((result) => (
                 <button
                   key={result.id}
                   onClick={() => {
@@ -874,7 +885,7 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
               </div>
             ) : null}
           </div>
-        ) : isFoldersLoading && folderTree.length === 0 && rootNotes.length === 0 ? (
+        ) : isFoldersLoading && rootItems.length === 0 ? (
           <div className="space-y-1 px-1 py-1 animate-pulse">
             {/* Skeleton folder */}
             <div className="flex items-center gap-2 h-8 px-2 rounded-lg">
@@ -927,9 +938,23 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
             id="root-context"
           >
             {rootItems.map((item) => {
+              if (item.source === 'shared') {
+                const selectSharedNote = (noteId: string) => {
+                  clearAllSelection()
+                  onSelectNote(noteId)
+                  closeMobileSidebar()
+                }
+                if (item.type === 'folder') {
+                  return <SharedFolderItem key={item.id} folder={item.folder} folders={sharedFolders} notes={sharedWithMe}
+                    selectedNoteId={selectedNoteId} onSelectNote={selectSharedNote} onRefresh={fetchSharedWithMe}
+                    renderNote={note => <SharedNoteItem key={note.id} note={note} isSelected={selectedNoteId === note.id}
+                      onSelect={() => selectSharedNote(note.id)} onNoteUpdated={fetchSharedWithMe} />} />
+                }
+                return <SharedNoteItem key={item.id} note={item.note} isSelected={selectedNoteId === item.id}
+                  onSelect={() => selectSharedNote(item.id)} onNoteUpdated={fetchSharedWithMe} />
+              }
               if (item.type === 'folder') {
-                const folder = filteredFolderTree.find(f => f.id === item.id)
-                if (!folder) return null
+                const folder = item.folder
 
                 return (
                   <SortableFolderItem
@@ -961,8 +986,7 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
                   />
                 )
               } else {
-                const note = filteredRootNotes.find(n => n.id === item.id)
-                if (!note) return null
+                const note = item.note
 
                 return (
                   <SortableNoteItem
@@ -1004,7 +1028,12 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
           </DragOverlay>
         </DndContext>
 
-        {filteredFolderTree.length === 0 && filteredRootNotes.length === 0 && (
+        {isLoadingSharedWithMe && rootItems.length === 0 && <div role="status" className="flex justify-center py-3">
+          <span className="w-4 h-4 border-2 border-[var(--color-accent)] border-t-transparent rounded-full animate-spin" />
+        </div>}
+        {sharedLoadError && <button type="button" onClick={() => void fetchSharedWithMe()}
+          className="w-full min-h-11 px-3 text-sm text-[var(--color-error)]">{t('common.retry')}</button>}
+        {rootItems.length === 0 && !isLoadingSharedWithMe && !sharedLoadError && (
           <div className="p-4 text-center text-sm text-[var(--color-text-tertiary)]">
             {selectedTagIds.length > 0 || excludedTagIds.length > 0
               ? t('sidebar.no_notes_with_tags')
@@ -1015,14 +1044,6 @@ export function Sidebar({ onSelectNote, selectedNoteId, searchInputRef }: Sideba
         </>
         )}
       </nav>
-
-      <SharedWithMeSection
-        selectedNoteId={selectedNoteId}
-        onSelectNote={(noteId) => {
-          onSelectNote(noteId)
-          closeMobileSidebar()
-        }}
-      />
 
       {tags.filter(t => t.noteCount > 0).length > 0 && (
         <div className="flex-shrink-0 relative">

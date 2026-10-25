@@ -2,7 +2,9 @@ export { useSidebarDnd } from './use-sidebar-dnd'
 export { SortableNoteItem } from './SortableNoteItem'
 export { SortableFolderItem } from './SortableFolderItem'
 export { DragOverlayContent } from './DragOverlayContent'
-export { SharedWithMeSection } from './SharedWithMeSection'
+export { SharedNoteItem } from './SharedNoteItem'
+export { SharedFolderItem } from './SharedFolderItem'
+export { buildSidebarItems } from './sidebar-items'
 export { SelectionActionBar } from './SelectionActionBar'
 
 export type {

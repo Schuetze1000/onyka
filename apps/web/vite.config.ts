@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import { findAvailablePort } from '../../scripts/dev-tools.js'
+import { vendorChunk } from './bundling/chunks'
 
 async function developmentPort() {
   // Vite reloads its config on edits. Reuse our chosen port during that process
@@ -42,25 +43,7 @@ export default defineConfig(async ({ command, mode }) => ({
     sourcemap: process.env.NODE_ENV !== 'production',
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react-dom') || id.includes('react-router-dom')) {
-              return 'vendor'
-            }
-            if (id.includes('@tiptap/') || id.includes('prosemirror')) {
-              return 'tiptap'
-            }
-            if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) {
-              return 'framer-motion'
-            }
-            if (id.includes('@dnd-kit/')) {
-              return 'dnd-kit'
-            }
-            if (id.includes('socket.io')) {
-              return 'socket-io'
-            }
-          }
-        },
+        manualChunks: vendorChunk,
       },
     },
   },

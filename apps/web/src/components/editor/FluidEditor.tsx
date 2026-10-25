@@ -723,6 +723,8 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
   }, [editor, readOnly])
 
   // Desktop: show columns toolbar on border hover
+  const { containerRef } = useSmoothCaret(editor, true)
+
   useEffect(() => {
     const container = containerRef.current
     if (!container || !editor || isMobile) return
@@ -786,7 +788,7 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
       container.removeEventListener('mousemove', onMouseMove)
       if (columnsHideTimer.current) clearTimeout(columnsHideTimer.current)
     }
-  }, [editor, isMobile])
+  }, [editor, isMobile, containerRef])
 
   const handleColumnsToolbarEnter = useCallback(() => {
     overColumnsToolbarRef.current = true
@@ -895,7 +897,6 @@ export const FluidEditor = memo(function FluidEditor({ content, onChange, placeh
     }
   }, [showSlashMenu])
 
-  const { containerRef } = useSmoothCaret(editor, true)
 
   const handleFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

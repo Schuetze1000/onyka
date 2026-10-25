@@ -71,15 +71,11 @@ export class EmailVerificationService {
    */
   async verifyEmail(token: string): Promise<{ userId: string; email: string }> {
     const tokenHash = this.hashToken(token)
-    const verificationToken = await emailVerificationRepository.findValidByHash(tokenHash)
+    const verificationToken = await emailVerificationRepository.consumeAndVerify(tokenHash)
 
     if (!verificationToken) {
       throw new EmailVerificationError('Invalid or expired verification token', 'INVALID_TOKEN', 400)
     }
-
-    await userRepository.setEmail(verificationToken.userId, verificationToken.email)
-    await userRepository.setEmailVerified(verificationToken.userId, true)
-    await emailVerificationRepository.delete(verificationToken.id)
 
     return {
       userId: verificationToken.userId,

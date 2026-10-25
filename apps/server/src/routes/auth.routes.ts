@@ -277,6 +277,12 @@ router.patch('/me', authenticate, async (req, res, next) => {
     const input = updateProfileSchema.parse(req.body)
     const result = await authService.updateProfile(req.userId!, input)
     if (input.newPassword) {
+      const tokens = await tokenService.generateTokenPair(result.id, result.username, false, {
+        userAgent: req.headers['user-agent'], ipAddress: req.ip,
+      })
+      res.cookie('access_token', tokens.accessToken, { ...COOKIE_OPTIONS, maxAge: tokens.expiresIn * 1000 })
+      res.cookie('refresh_token', tokens.refreshToken, { ...COOKIE_OPTIONS, maxAge: REFRESH_TOKEN_SHORT_DAYS * 86400000 })
+      res.clearCookie(TRUSTED_DEVICE_COOKIE, COOKIE_OPTIONS)
       logger.info('Password changed', { userId: req.userId!.substring(0, 8) })
     }
     res.json({ user: result })
@@ -686,7 +692,7 @@ router.get('/trusted-devices', authenticate, async (req, res, next) => {
  */
 router.delete('/trusted-devices/:id', authenticate, async (req, res, next) => {
   try {
-    const revoked = await twoFactorService.revokeTrustedDevice(req.params.id, req.userId!)
+    const revoked = await twoFactorService.revokeTrustedDevice(z.string().parse(req.params.id), req.userId!)
     if (!revoked) {
       res.status(404).json({
         error: { code: 'DEVICE_NOT_FOUND', message: 'Trusted device not found' },
@@ -863,7 +869,7 @@ router.get('/sessions', authenticate, async (req, res, next) => {
  */
 router.delete('/sessions/:id', authenticate, async (req, res, next) => {
   try {
-    const sessionId = req.params.id
+    const sessionId = z.string().parse(req.params.id)
     const revoked = await tokenService.revokeSession(sessionId, req.userId!)
 
     if (!revoked) {

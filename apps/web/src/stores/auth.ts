@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import type { User } from '@onyka/shared'
-import { authApi, ApiException, type RateLimitInfo, type Auth2FARequiredResponse, resetRefreshState } from '@/services/api'
+import { authApi, ApiException, type RateLimitInfo, type Auth2FARequiredResponse, resetRefreshState, invalidateSessionRequests } from '@/services/api'
 import { setLanguage } from '@/i18n'
 import { useThemeStore, setAuthenticatedState } from './theme'
-import { useNotesStore } from './notes'
+import { useNotesStore, resetNoteCache } from './notes'
 import { useFoldersStore } from './folders'
 import { useTagsStore } from './tags'
 import { useSparksStore } from './sparks'
@@ -17,13 +17,15 @@ import { resetSocket } from '@/hooks/useSocket'
 
 /** Resets all user-scoped stores on logout to prevent data leaking between sessions. */
 function clearAllUserStores() {
-  useNotesStore.setState({ notes: [], currentNote: null, searchResults: [], selectedNoteIds: [], isLoading: false, error: null })
+  invalidateSessionRequests()
+  resetNoteCache()
+  useNotesStore.setState({ notes: [], currentNote: null, searchResults: [], isSearching: false, selectedNoteIds: [], isLoading: false, error: null })
   useFoldersStore.setState({ folders: [], isLoading: false, error: null })
   useTagsStore.setState({ tags: [], isLoading: false, error: null })
   useSparksStore.setState({ pinned: [], temporary: [], permanent: [], stats: null, isLoading: false, error: null, isDrawerOpen: false })
-  useSharesStore.setState({ sharedWithMe: [], myShares: [], sharedFolderIds: new Set(), isLoadingSharedWithMe: false, isLoadingMyShares: false })
+  useSharesStore.setState({ sharedWithMe: [], sharedFolders: [], sharedLoadError: false, myShares: [], sharedFolderIds: new Set(), isLoadingSharedWithMe: false, isLoadingMyShares: false })
   useCommentsStore.setState({ commentsByNote: {}, countsByNote: {}, isLoading: false, isSubmitting: false, error: null, expandedNoteId: null, replyingTo: null, editingId: null })
-  usePagesStore.setState({ pagesByNote: {}, activePageByNote: {}, isLoading: false, isSaving: false, error: null })
+  usePagesStore.setState({ pagesByNote: {}, pageLocks: {}, activePageByNote: {}, isLoading: false, isSaving: false, error: null })
   useSettingsStore.setState({ settings: null, isLoading: false, error: null })
 
   useStatsStore.setState({
@@ -85,13 +87,15 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       const user = (response as { user: User }).user
+      clearAllUserStores()
+      resetSocket()
       resetRefreshState()
       if (user.language) {
         setLanguage(user.language)
       }
       await useThemeStore.getState().loadFromUser(user)
       setAuthenticatedState(true)
-      set({ user, isAuthenticated: true })
+      set({ user, isAuthenticated: true, isLoading: false })
     } catch (err) {
       if (err && typeof err === 'object' && 'requires2FA' in err) {
         throw err
@@ -109,9 +113,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ error: null, rateLimitInfo: null })
     try {
       const { user } = await authApi.register({ username, password, email })
+      clearAllUserStores()
+      resetSocket()
       await useThemeStore.getState().loadFromUser(user)
       setAuthenticatedState(true)
-      set({ user, isAuthenticated: true })
+      set({ user, isAuthenticated: true, isLoading: false })
     } catch (err) {
       const rateLimitInfo = err instanceof ApiException ? err.rateLimitInfo : null
       let message = 'Registration failed'
@@ -140,6 +146,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       await authApi.logout()
     } catch {
+      // Clear local user data even when the logout request cannot reach the server.
     } finally {
       setAuthenticatedState(false)
       clearAllUserStores()
@@ -158,7 +165,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       await useThemeStore.getState().loadFromUser(user)
       setAuthenticatedState(true)
       set({ user, isAuthenticated: true, isLoading: false })
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiException && error.code === 'SESSION_CHANGED') return
+      clearAllUserStores()
+      resetSocket()
       setAuthenticatedState(false)
       set({ user: null, isAuthenticated: false, isLoading: false })
     }
@@ -167,8 +177,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   clearError: () => set({ error: null, rateLimitInfo: null }),
 
   setUser: (user) => {
+    if (useAuthStore.getState().user?.id !== user.id) {
+      clearAllUserStores()
+      resetSocket()
+      resetRefreshState()
+    }
     setAuthenticatedState(true)
-    set({ user, isAuthenticated: true })
+    set({ user, isAuthenticated: true, isLoading: false })
   },
 
   refreshUser: async () => {
@@ -176,6 +191,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const { user } = await authApi.me()
       set({ user })
     } catch {
+      // Keep the last confirmed profile when refreshing it fails.
     }
   },
 }))

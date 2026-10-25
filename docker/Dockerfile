@@ -6,12 +6,12 @@
 # -----------------------------------------------------------------------------
 # Stage 1: Builder
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS builder
+FROM node:22.23.4-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache python3 make g++
 
-RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
+RUN npm install --global pnpm@12.14.0
 
 WORKDIR /app
 
@@ -41,7 +41,7 @@ RUN npm pkg delete scripts.prepare && \
 # -----------------------------------------------------------------------------
 # Stage 2: Production
 # -----------------------------------------------------------------------------
-FROM node:20-alpine AS production
+FROM node:22.23.4-alpine AS production
 
 # Security: Don't run as root
 RUN addgroup -g 1001 -S onyka && \

@@ -31,6 +31,11 @@ router.get('/folder/:id', async (req, res, next) => {
 
     res.setHeader('Content-Type', 'application/zip')
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`)
+    stream.on('error', (error) => {
+      if (!res.headersSent) next(error)
+      else res.destroy(error)
+    })
+    res.on('close', () => stream.destroy())
     stream.pipe(res)
   } catch (error) {
     next(error)

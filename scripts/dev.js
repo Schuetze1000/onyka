@@ -6,9 +6,11 @@
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs'
+import { fileURLToPath, URL } from 'node:url'
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
+import { parseEnv } from 'node:util'
+import { resolvePackageCli, frontendUrlFromOutput } from './dev-tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT_DIR = join(__dirname, '..')
@@ -31,21 +33,21 @@ const devEnv = {
   NODE_ENV: 'development',
 }
 
-// Start pnpm commands safely on Windows
+// Run installed CLIs directly: Windows .cmd shims otherwise require shell=true.
 function run(command, args, options = {}) {
-  return spawn(command, args, {
+  return spawn(process.execPath, [resolvePackageCli(command, options.cwd), ...args], {
     ...options,
     env: devEnv,
-    shell: isWindows,
+    shell: false,
     windowsHide: true,
   })
 }
 
 function runSync(command, args, options = {}) {
-  return spawnSync(command, args, {
+  return spawnSync(process.execPath, [resolvePackageCli(command, options.cwd), ...args], {
     ...options,
     env: devEnv,
-    shell: isWindows,
+    shell: false,
     windowsHide: true,
     encoding: 'utf8',
   })
@@ -77,11 +79,18 @@ CORS_ORIGIN=http://localhost:5173
 }
 
 // Database migrations
+const serverConfig = parseEnv(readFileSync(ENV_FILE, 'utf8'))
+const backendPort = Number(devEnv.PORT ?? serverConfig.PORT ?? 3001)
+if (!Number.isInteger(backendPort) || backendPort < 1 || backendPort > 65535) {
+  throw new Error('PORT must be an integer between 1 and 65535')
+}
+devEnv.DEV_API_TARGET = `http://127.0.0.1:${backendPort}`
+
 console.log(dim('  Running database migrations...'))
 
 const migrate = runSync(
-  'pnpm',
-  ['exec', 'drizzle-kit', 'migrate'],
+  'tsx',
+  ['src/db/migrate.ts'],
   {
     cwd: SERVER_DIR,
     stdio: 'pipe',
@@ -112,6 +121,8 @@ let serverReady = false
 let webReady = false
 let statusShown = false
 let shuttingDown = false
+let webUrl = null
+let frontendOutput = ''
 
 const children = []
 
@@ -129,15 +140,15 @@ function showStatus() {
   console.log(dim('  ──────────────────'))
   console.log('')
   console.log('  Open in browser:')
-  console.log(blue('  http://localhost:5173'))
+  console.log(blue(`  ${webUrl}`))
   console.log('')
   console.log(dim('  Press Ctrl+C to stop'))
   console.log('')
 }
 
 // Child process management
-function startProcess(name, args, cwd, onOutput) {
-  const child = run('pnpm', ['exec', ...args], {
+function startProcess(name, command, args, cwd, onOutput) {
+  const child = run(command, args, {
     cwd,
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -180,31 +191,30 @@ function startProcess(name, args, cwd, onOutput) {
   return child
 }
 
-// Start backend
-startProcess(
-  'Backend',
-  ['tsx', 'watch', 'src/index.ts'],
-  SERVER_DIR,
-  (output) => {
-    if (
-      /Server running|listening|running on/i.test(output)
-    ) {
-      serverReady = true
-      showStatus()
-    }
-  }
-)
-
-// Start frontend
+// Start the frontend first so the backend receives the actual browser origin,
+// including an OS-selected fallback port, for CORS, WebSockets and email links.
 startProcess(
   'Frontend',
-  ['vite'],
+  'vite',
+  [],
   WEB_DIR,
   (output) => {
-    if (/Local:|ready in|VITE/i.test(output)) {
-      webReady = true
-      showStatus()
-    }
+    if (webReady) return
+    frontendOutput = (frontendOutput + output).slice(-8192)
+    webUrl = frontendUrlFromOutput(frontendOutput)
+    if (!webUrl) return
+    webReady = true
+    const origin = new URL(webUrl).origin
+    devEnv.CORS_ORIGIN = origin
+    devEnv.FRONTEND_URL = origin
+    let backendOutputBuffer = ''
+    startProcess('Backend', 'tsx', ['watch', 'src/index.ts'], SERVER_DIR, (backendOutput) => {
+      backendOutputBuffer = (backendOutputBuffer + backendOutput).slice(-8192)
+      if (/Server running|listening|running on/i.test(backendOutputBuffer)) {
+        serverReady = true
+        showStatus()
+      }
+    })
   }
 )
 

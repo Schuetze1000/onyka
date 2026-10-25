@@ -2,8 +2,18 @@ import { create } from 'zustand'
 import type { NotePage, NotePageCreateInput, NotePageUpdateInput } from '@onyka/shared'
 import { pagesApi } from '@/services/api'
 
+type PageLocks = Record<string, { noteId: string; isLocked: boolean; revision: number }>
+
+function mergeRemoteLock(page: NotePage, started: PageLocks, current: PageLocks): NotePage {
+  const lock = current[page.id]
+  return lock?.noteId === page.noteId && lock.revision !== started[page.id]?.revision
+    ? { ...page, isLocked: lock.isLocked }
+    : page
+}
+
 interface PagesState {
   pagesByNote: Record<string, NotePage[]>
+  pageLocks: PageLocks
   activePageByNote: Record<string, string>
   isLoading: boolean
   isSaving: boolean
@@ -20,10 +30,12 @@ interface PagesState {
   clearNotePages: (noteId: string) => void
   clearError: () => void
   patchPageContent: (pageId: string, content: string) => void
+  applyPageLock: (noteId: string, pageId: string, isLocked: boolean) => void
 }
 
 export const usePagesStore = create<PagesState>((set, get) => ({
   pagesByNote: {},
+  pageLocks: {},
   activePageByNote: {},
   isLoading: false,
   isSaving: false,
@@ -33,11 +45,12 @@ export const usePagesStore = create<PagesState>((set, get) => ({
     // Skip if already loaded — pages refresh on create/delete/reorder
     if (get().pagesByNote[noteId] !== undefined) return
 
+    const startedLocks = get().pageLocks
     set({ isLoading: true, error: null })
     try {
       const { pages } = await pagesApi.list(noteId)
       set((state) => ({
-        pagesByNote: { ...state.pagesByNote, [noteId]: pages },
+        pagesByNote: { ...state.pagesByNote, [noteId]: pages.map(page => mergeRemoteLock(page, startedLocks, state.pageLocks)) },
         activePageByNote: {
           ...state.activePageByNote,
           [noteId]: state.activePageByNote[noteId] || pages[0]?.id || '',
@@ -50,13 +63,15 @@ export const usePagesStore = create<PagesState>((set, get) => ({
   },
 
   createPage: async (noteId: string, input?: NotePageCreateInput, switchTo = true) => {
+    const startedLocks = get().pageLocks
     set({ isSaving: true, error: null })
     try {
       const { page } = await pagesApi.create(noteId, input || {})
       set((state) => ({
         pagesByNote: {
           ...state.pagesByNote,
-          [noteId]: [...(state.pagesByNote[noteId] || []), page],
+          [noteId]: [...(state.pagesByNote[noteId] || []).filter(p => p.id !== page.id),
+            mergeRemoteLock(page, startedLocks, state.pageLocks)],
         },
         activePageByNote: {
           ...state.activePageByNote,
@@ -73,20 +88,22 @@ export const usePagesStore = create<PagesState>((set, get) => ({
 
   updatePage: async (pageId: string, input: NotePageUpdateInput) => {
     const noteId = findNoteIdForPage(get().pagesByNote, pageId)
-    if (!noteId) return
+    if (!noteId) throw new Error('Page is no longer available')
 
+    const startedLocks = get().pageLocks
     try {
       const { page } = await pagesApi.update(pageId, input)
       set((state) => ({
         pagesByNote: {
           ...state.pagesByNote,
-          [noteId]: state.pagesByNote[noteId].map((p) =>
-            p.id === pageId ? page : p
+          [noteId]: (state.pagesByNote[noteId] ?? []).map((p) =>
+            p.id === pageId ? mergeRemoteLock(page, startedLocks, state.pageLocks) : p
           ),
         },
       }))
-    } catch {
+    } catch (error) {
       set({ error: 'Failed to update page' })
+      throw error
     }
   },
 
@@ -100,22 +117,24 @@ export const usePagesStore = create<PagesState>((set, get) => ({
     set({ isSaving: true, error: null })
     try {
       await pagesApi.delete(pageId)
-      const remainingPages = pages.filter((p) => p.id !== pageId)
-      const activePageId = get().activePageByNote[noteId]
 
-      set((state) => ({
-        pagesByNote: {
-          ...state.pagesByNote,
-          [noteId]: remainingPages,
-        },
-        activePageByNote: {
-          ...state.activePageByNote,
-          [noteId]: activePageId === pageId
-            ? remainingPages[0]?.id || ''
-            : activePageId,
-        },
-        isSaving: false,
-      }))
+      set((state) => {
+        const remainingPages = (state.pagesByNote[noteId] ?? []).filter(p => p.id !== pageId)
+        const activePageId = state.activePageByNote[noteId]
+        return {
+          pagesByNote: {
+            ...state.pagesByNote,
+            [noteId]: remainingPages,
+          },
+          activePageByNote: {
+            ...state.activePageByNote,
+            [noteId]: activePageId === pageId
+              ? remainingPages[0]?.id || ''
+              : activePageId,
+          },
+          isSaving: false,
+        }
+      })
     } catch {
       set({ error: 'Failed to delete page', isSaving: false })
     }
@@ -131,10 +150,11 @@ export const usePagesStore = create<PagesState>((set, get) => ({
   },
 
   refetchPages: async (noteId: string) => {
+    const startedLocks = get().pageLocks
     try {
       const { pages } = await pagesApi.list(noteId)
       set((state) => ({
-        pagesByNote: { ...state.pagesByNote, [noteId]: pages },
+        pagesByNote: { ...state.pagesByNote, [noteId]: pages.map(page => mergeRemoteLock(page, startedLocks, state.pageLocks)) },
       }))
     } catch {
       set({ error: 'Failed to refresh pages' })
@@ -184,11 +204,28 @@ export const usePagesStore = create<PagesState>((set, get) => ({
       return {
         pagesByNote: restPages,
         activePageByNote: restActive,
+        pageLocks: Object.fromEntries(Object.entries(state.pageLocks).filter(([, lock]) => lock.noteId !== noteId)),
       }
     })
   },
 
   clearError: () => set({ error: null }),
+
+  applyPageLock: (noteId, pageId, isLocked) => {
+    set((state) => {
+      const existingNoteId = findNoteIdForPage(state.pagesByNote, pageId)
+      if (existingNoteId && existingNoteId !== noteId) return state
+      const pages = state.pagesByNote[noteId]
+      return {
+        pageLocks: { ...state.pageLocks, [pageId]: {
+          noteId, isLocked, revision: (state.pageLocks[pageId]?.revision ?? 0) + 1,
+        } },
+        pagesByNote: pages ? { ...state.pagesByNote, [noteId]: pages.map(page =>
+          page.id === pageId ? { ...page, isLocked } : page
+        ) } : state.pagesByNote,
+      }
+    })
+  },
 
   patchPageContent: (pageId: string, content: string) => {
     const noteId = findNoteIdForPage(get().pagesByNote, pageId)

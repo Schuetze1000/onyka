@@ -111,6 +111,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   const pendingUpdatesRef = useRef<{ title?: string; content?: string }>({})
   const lastActivePageIdRef = useRef<string | null>(null)
   const savingContentRef = useRef<string | null>(null)
+  const saveQueueRef = useRef(Promise.resolve())
   const localContentRef = useRef(note.content)
   const localTitleRef = useRef(note.title)
   const wordCountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -316,38 +317,54 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.title])
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     const updates = { ...pendingUpdatesRef.current }
-    if (Object.keys(updates).length === 0) return
+    if (Object.keys(updates).length === 0) return saveQueueRef.current
 
     const contentToSave = updates.content
-    if (contentToSave !== undefined) {
-      savingContentRef.current = contentToSave
+    const save = async () => {
+      if (contentToSave !== undefined) {
+        savingContentRef.current = contentToSave
+      }
+
+      try {
+        if (updates.title !== undefined) {
+          await onUpdate({ title: updates.title })
+          lastSavedRef.current.title = updates.title
+        }
+
+        if (contentToSave !== undefined && activePage) {
+          await updatePage(activePage.id, { content: contentToSave })
+          lastSavedRef.current.content = contentToSave
+        } else if (contentToSave !== undefined) {
+          await onUpdate({ content: contentToSave })
+          lastSavedRef.current.content = contentToSave
+        }
+
+        if (pendingUpdatesRef.current.title === updates.title) delete pendingUpdatesRef.current.title
+        if (pendingUpdatesRef.current.content === contentToSave) delete pendingUpdatesRef.current.content
+        setLastModifiedAt(new Date())
+      } finally {
+        if (savingContentRef.current === contentToSave) savingContentRef.current = null
+        if (Object.keys(pendingUpdatesRef.current).length === 0) {
+          isEditingRef.current = false
+        }
+      }
     }
-
-    try {
-      if (updates.title !== undefined) {
-        await onUpdate({ title: updates.title })
-        lastSavedRef.current.title = updates.title
-      }
-
-      if (contentToSave !== undefined && activePage) {
-        await updatePage(activePage.id, { content: contentToSave })
-        lastSavedRef.current.content = contentToSave
-      } else if (contentToSave !== undefined) {
-        await onUpdate({ content: contentToSave })
-        lastSavedRef.current.content = contentToSave
-      }
-
-      pendingUpdatesRef.current = {}
-      setLastModifiedAt(new Date())
-    } finally {
-      if (savingContentRef.current === contentToSave) savingContentRef.current = null
-      if (!pendingUpdatesRef.current.content) {
-        isEditingRef.current = false
-      }
-    }
+    const pending = saveQueueRef.current.then(save)
+    saveQueueRef.current = pending.catch(() => { /* Keep later saves running after a failed request. */ })
+    return pending
   }, [onUpdate, activePage, updatePage])
+
+  const latestSaveRef = useRef(handleSave)
+  latestSaveRef.current = handleSave
+  const editingUserId = user?.id
+  useEffect(() => () => {
+    const auth = useAuthStore.getState()
+    if (auth.isAuthenticated && auth.user?.id === editingUserId) {
+      void latestSaveRef.current().catch(error => console.error('Could not save note before leaving', error))
+    }
+  }, [editingUserId])
 
   const { status, triggerSave, cancel: cancelAutoSave } = useAutoSave({
     onSave: handleSave,
@@ -427,17 +444,8 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
   const handlePageCreate = async () => {
     if (!canEditNote) return
-    if (pendingUpdatesRef.current.content && activePage) {
-      const contentToSave = pendingUpdatesRef.current.content
-      savingContentRef.current = contentToSave
-      lastSavedRef.current.content = contentToSave
-      pendingUpdatesRef.current = { title: pendingUpdatesRef.current.title }
-      updatePage(activePage.id, { content: contentToSave }).finally(() => {
-        if (savingContentRef.current === contentToSave) {
-          savingContentRef.current = null
-        }
-      })
-    }
+    try { await handleSave() } catch { triggerSave(); return }
+    if (Object.keys(pendingUpdatesRef.current).length > 0) return
     if (wordCountTimerRef.current) {
       clearTimeout(wordCountTimerRef.current)
       wordCountTimerRef.current = null
@@ -447,10 +455,11 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
     // Migrate existing content to Page 1 if no pages yet
     if (pages.length === 0) {
-      await createPage(note.id, {
+      const firstPage = await createPage(note.id, {
         title: 'Page 1',
         content: localContentRef.current,
       }, false)
+      if (!firstPage) return
     }
     await createPage(note.id, undefined, true)
   }
@@ -465,6 +474,10 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
 
   const handlePageLockToggle = async (pageId: string, isLocked: boolean) => {
     if (!canEditNote) return
+    if (isLocked && pageId === activePage?.id) {
+      try { await handleSave() } catch { triggerSave(); return }
+      if (Object.keys(pendingUpdatesRef.current).length > 0) return
+    }
     await updatePage(pageId, { isLocked })
   }
 
@@ -483,18 +496,9 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
     }
   }
 
-  const handlePageChange = (pageId: string) => {
-    if (pendingUpdatesRef.current.content && activePage) {
-      const contentToSave = pendingUpdatesRef.current.content
-      savingContentRef.current = contentToSave
-      lastSavedRef.current.content = contentToSave
-      pendingUpdatesRef.current = { title: pendingUpdatesRef.current.title }
-      updatePage(activePage.id, { content: contentToSave }).finally(() => {
-        if (savingContentRef.current === contentToSave) {
-          savingContentRef.current = null
-        }
-      })
-    }
+  const handlePageChange = async (pageId: string) => {
+    try { await handleSave() } catch { triggerSave(); return }
+    if (Object.keys(pendingUpdatesRef.current).length > 0) return
     if (wordCountTimerRef.current) {
       clearTimeout(wordCountTimerRef.current)
       wordCountTimerRef.current = null
@@ -574,7 +578,7 @@ export function NoteEditor({ note, onUpdate, onDelete }: NoteEditorProps) {
                   <button
                     onClick={() => { setShowTypographyMenu(!showTypographyMenu); preloadAllFonts() }}
                     className="flex items-center gap-1.5 h-8 px-2.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-all duration-150"
-                    title={t('settings.typography') || 'Typography'}
+                    title={t('settings.typography')}
                   >
                     <IoTextOutline className="w-4 h-4" />
                     <span className="text-[11px] font-medium opacity-70 hidden sm:inline">

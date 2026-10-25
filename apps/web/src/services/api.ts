@@ -52,6 +52,9 @@ export class ApiException extends Error {
   }
 }
 
+let sessionEpoch = 0
+export function invalidateSessionRequests(): void { sessionEpoch++ }
+
 let isRefreshing = false
 let refreshPromise: Promise<boolean> | null = null
 let refreshFailureCount = 0
@@ -71,7 +74,13 @@ async function refreshToken(retryCount = 0): Promise<boolean> {
       return true
     }
 
-    // Client errors (4xx) are definitive -- don't retry
+    // Another tab may have rotated the shared cookie while this request was in flight.
+    if ((response.status === 401 || response.status === 409) && retryCount === 0) {
+      await new Promise(resolve => setTimeout(resolve, 200))
+      return refreshToken(1)
+    }
+
+    // Other client errors are definitive.
     if (response.status >= 400 && response.status < 500) {
       return false
     }
@@ -147,6 +156,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
       rateLimitInfo
     )
   }
+  if (response.status === 204) return undefined as T
   return response.json()
 }
 
@@ -155,6 +165,10 @@ async function request<T>(
   options: RequestInit = {},
   retryOnUnauthorized = true
 ): Promise<T> {
+  const epoch = sessionEpoch
+  const assertSession = () => {
+    if (epoch !== sessionEpoch) throw new ApiException('SESSION_CHANGED', 'Session changed', 401)
+  }
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     credentials: 'include',
@@ -164,6 +178,8 @@ async function request<T>(
     },
   })
 
+  assertSession()
+
   // Attempt token refresh on 401 (except auth endpoints)
   if (response.status === 401 && retryOnUnauthorized) {
     const noRefreshEndpoints = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout']
@@ -172,6 +188,7 @@ async function request<T>(
     if (!shouldSkipRefresh) {
       const refreshed = await handleTokenRefresh()
 
+      assertSession()
       if (refreshed) {
         const retryResponse = await fetch(`${API_BASE}${endpoint}`, {
           ...options,
@@ -181,12 +198,16 @@ async function request<T>(
             ...options.headers,
           },
         })
-        return handleResponse<T>(retryResponse)
+        const result = await handleResponse<T>(retryResponse)
+        assertSession()
+        return result
       }
     }
   }
 
-  return handleResponse<T>(response)
+  const result = await handleResponse<T>(response)
+  assertSession()
+  return result
 }
 
 export interface LoginRequest {

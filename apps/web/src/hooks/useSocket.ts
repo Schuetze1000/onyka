@@ -33,6 +33,15 @@ export function getSharedSocket(): Socket {
     }
   })
 
+  let renewing = false
+  socket.on('auth-error', async () => {
+    if (renewing) return
+    renewing = true
+    try {
+      if (await handleTokenRefresh() && socket === currentSocket) currentSocket.connect()
+    } finally { renewing = false }
+  })
+
   socket.on('disconnect', (reason) => {
     console.log('[Socket] Disconnected:', reason)
   })

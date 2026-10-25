@@ -321,6 +321,7 @@
       "xl": "Sehr groß",
       "xxl": "Maximum"
     },
+    "typography": "Typografie",
     "font_family": "Schriftart",
     "font_family_desc": "Schriftart im Editor",
     "account": "Konto",

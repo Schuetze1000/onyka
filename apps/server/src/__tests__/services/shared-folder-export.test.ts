@@ -4,7 +4,7 @@ vi.mock('../../repositories/folder.repository.js', () => ({ folderRepository: { 
 vi.mock('../../repositories/share.repository.js', () => ({ shareRepository: { hasAccess: mocks.permission } }))
 vi.mock('../../repositories/note.repository.js', () => ({ noteRepository: { findByIdWithTags: mocks.note } }))
 vi.mock('../../repositories/page.repository.js', () => ({ pageRepository: {} }))
-vi.mock('archiver', () => ({ default: () => ({ on: vi.fn(), pipe: vi.fn(), append: vi.fn(), finalize: async () => {} }) }))
+vi.mock('archiver', () => ({ default: () => ({ on: vi.fn(), pipe: vi.fn(), append: vi.fn(), abort: vi.fn(), finalize: async () => {} }) }))
 import { exportService } from '../../services/export.service.js'
 
 beforeEach(() => {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import type { Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/auth'
+import { usePagesStore } from '@/stores/pages'
 import { uniqueCollaborators } from '@/utils/collaborationPresence'
 import { getSharedSocket } from './useSocket'
 
@@ -88,6 +89,9 @@ export function useCollaboration({
 
     const handleRoomJoined = (data: { noteId: string; users: UserPresence[] }) => {
       if (data.noteId === noteIdRef.current) {
+        // Refresh persisted metadata after every join, including reconnects
+        // that may have missed a lock/unlock while offline.
+        void usePagesStore.getState().refetchPages(data.noteId)
         const otherUsers = data.users.filter(u => u.socketId !== socket.id)
         setUsers(otherUsers)
         onUsersChangeRef.current?.(uniqueCollaborators(otherUsers))
@@ -119,6 +123,11 @@ export function useCollaboration({
       }
     }
 
+    const handlePageLockChanged = (update: { noteId: string; pageId: string; isLocked: boolean }) => {
+      if (update.noteId !== noteIdRef.current) return
+      usePagesStore.getState().applyPageLock(update.noteId, update.pageId, update.isLocked)
+    }
+
     const handleCursorMoved = debounce((data: { socketId: string; userId: string; name: string; position: { from: number; to: number } | null }) => {
       if (data.socketId === socket.id) return
       setUsers(prev => {
@@ -142,6 +151,7 @@ export function useCollaboration({
     socket.on('user-joined', handleUserJoined)
     socket.on('user-left', handleUserLeft)
     socket.on('content-update', handleContentUpdate)
+    socket.on('page-lock-changed', handlePageLockChanged)
     socket.on('cursor-moved', handleCursorMoved)
     socket.on('connect', handleConnect)
     socket.on('disconnect', handleDisconnect)
@@ -155,6 +165,7 @@ export function useCollaboration({
       socket.off('user-joined', handleUserJoined)
       socket.off('user-left', handleUserLeft)
       socket.off('content-update', handleContentUpdate)
+      socket.off('page-lock-changed', handlePageLockChanged)
       socket.off('cursor-moved', handleCursorMoved)
       socket.off('connect', handleConnect)
       socket.off('disconnect', handleDisconnect)

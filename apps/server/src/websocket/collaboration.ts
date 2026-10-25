@@ -8,16 +8,26 @@
  * - Presence (who's editing)
  */
 
+import { z } from 'zod'
 import { Server as SocketServer, Socket } from 'socket.io'
 import type { Server as HttpServer } from 'http'
 import { parse as parseCookies } from 'cookie'
 import { env } from '../config/env.js'
 import { sharingService } from '../services/sharing.service.js'
 import { tokenService } from '../services/token.service.js'
-import { userRepository } from '../repositories/index.js'
+import { userRepository, noteRepository } from '../repositories/index.js'
+import { pageRepository } from '../repositories/page.repository.js'
 import { settingsService } from '../services/settings.service.js'
 import { SYSTEM_USERNAME } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
+
+const roomPayload = z.object({ noteId: z.string().min(1).max(128) })
+const eventSchemas = {
+  'join-room': roomPayload,
+  'leave-room': roomPayload,
+  'content-change': roomPayload.extend({ pageId: z.string().max(128).nullable().optional(), content: z.string().max(1_000_000), title: z.string().max(500) }),
+  'cursor-update': roomPayload.extend({ position: z.object({ from: z.number().int().min(0).max(2147483647), to: z.number().int().min(0).max(2147483647) }).nullable() }),
+}
 
 // Types for collaboration events
 interface JoinRoomPayload {
@@ -55,6 +65,7 @@ const socketUserMap = new Map<string, string>()
 
 // Global IO instance for external notifications
 let ioInstance: SocketServer | null = null
+const pageLockNotifications = new Map<string, Promise<void>>()
 
 /**
  * Get the Socket.io instance for external notifications
@@ -75,7 +86,9 @@ export function emitToUser(userId: string, event: string, data: unknown): boolea
     if (uid === userId) {
       const socket = ioInstance.sockets.sockets.get(socketId)
       if (socket) {
-        socket.emit(event, data)
+        void authenticateSocket(socket).then(identity => {
+          if (identity?.userId === userId && socket.connected) socket.emit(event, data)
+        }).catch(error => logger.error('Notification authorization failed', error instanceof Error ? error : undefined))
         sent = true
       }
     }
@@ -131,8 +144,57 @@ async function authenticateSocket(socket: Socket): Promise<{ userId: string; nam
 }
 
 async function canAccessNote(userId: string, noteId: string): Promise<boolean> {
+  const note = await noteRepository.findById(noteId)
+  if (!note || note.isDeleted) return false
   const permission = await sharingService.getPermissionLevel(userId, noteId, 'note')
   return permission !== null
+}
+
+async function authorizedNotePeers(noteId: string, excludedSocketId?: string): Promise<Socket[]> {
+  if (!ioInstance) return []
+  const io = ioInstance
+  const peers = await Promise.all([...io.sockets.sockets.values()]
+    .filter(peer => peer.id !== excludedSocketId && socketToRoom.get(peer.id) === noteId)
+    .map(async peer => {
+      const identity = await authenticateSocket(peer)
+      if (!identity) {
+        peer.emit('auth-error', { code: 'AUTH_REQUIRED' })
+        peer.disconnect(true)
+        return null
+      }
+      if (!await canAccessNote(identity.userId, noteId)) {
+        peer.leave(getRoomId(noteId))
+        socketToRoom.delete(peer.id)
+        roomUsers.get(noteId)?.delete(peer.id)
+        peer.emit('access-revoked', { noteId })
+        io.to(getRoomId(noteId)).emit('user-left', { socketId: peer.id })
+        return null
+      }
+      return peer
+    }))
+  return peers.filter((peer): peer is Socket => peer !== null)
+}
+
+/** Publish persisted state, including to other tabs of the person changing it. */
+export async function notifyPageLockChanged(noteId: string, pageId: string): Promise<void> {
+  if (!ioInstance) return
+  const previous = pageLockNotifications.get(pageId) ?? Promise.resolve()
+  const pending = previous.catch(() => {}).then(async () => {
+    const peers = await authorizedNotePeers(noteId)
+    // Read after permission checks and serialize notifications so a slow older
+    // request cannot announce a stale lock after a newer unlock.
+    const page = await pageRepository.findById(pageId)
+    if (!page || page.isDeleted || page.noteId !== noteId) return
+    for (const peer of peers) {
+      if (peer.connected && socketToRoom.get(peer.id) === noteId) {
+        peer.emit('page-lock-changed', { noteId, pageId, isLocked: page.isLocked })
+      }
+    }
+  })
+  pageLockNotifications.set(pageId, pending)
+  try { await pending } finally {
+    if (pageLockNotifications.get(pageId) === pending) pageLockNotifications.delete(pageId)
+  }
 }
 
 export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
@@ -140,6 +202,13 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     cors: {
       origin: env.CORS_ORIGIN,
       credentials: true,
+    },
+    allowRequest: (req, callback) => {
+      const origin = req.headers.origin
+      const allowed = [env.CORS_ORIGIN].flat()
+      let sameOrigin = false
+      try { sameOrigin = !!origin && new URL(origin).host === req.headers.host } catch { /* invalid origin */ }
+      callback(null, !origin || sameOrigin || allowed.includes(origin))
     },
     path: '/socket.io',
     pingTimeout: 60000,
@@ -169,9 +238,55 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     // Store userId on socket for targeted notifications
     socketUserMap.set(socket.id, user.userId)
     let roomRequest = 0
+    let packetWindow = Date.now()
+    let packetCount = 0
+    let checks = Promise.resolve()
+    socket.use((packet, next) => {
+      if (Date.now() - packetWindow >= 1000) { packetWindow = Date.now(); packetCount = 0 }
+      if (++packetCount > 120) { socket.disconnect(true); return }
+      checks = checks.then(async () => {
+        if (!socket.connected) return
+        const schema = eventSchemas[packet[0] as keyof typeof eventSchemas]
+        if (!schema) return
+        const parsed = schema.safeParse(packet[1])
+        if (!parsed.success) { socket.emit('error', { message: 'Invalid collaboration event' }); return }
+        if (!await authenticateSocket(socket)) {
+          socket.emit('auth-error', { code: 'AUTH_REQUIRED' })
+          socket.disconnect(true)
+          return
+        }
+        packet[1] = parsed.data
+        next()
+      }).catch(error => {
+        logger.error('Collaboration authorization failed', error instanceof Error ? error : undefined)
+        socket.disconnect(true)
+      })
+    })
+    // Keep asynchronous messages from one client in their original order and
+    // contain failed permission/database lookups instead of leaking rejections.
+    let events = Promise.resolve()
+    const onEvent = <T>(event: string, handler: (payload: T) => void | Promise<void>) => {
+      socket.on(event, (payload: T) => {
+        events = events.then(async () => { if (socket.connected) await handler(payload) }).catch(error => {
+          logger.error('Collaboration event failed', error instanceof Error ? error : undefined)
+          socket.emit('error', { message: 'Collaboration event failed' })
+        })
+      })
+    }
+    const broadcast = async (noteId: string, event: string, data: unknown, pageId?: string | null) => {
+      const recipients = await authorizedNotePeers(noteId, socket.id)
+      if (event === 'content-update' && pageId) {
+        const page = await pageRepository.findById(pageId)
+        if (!page || page.isDeleted || page.noteId !== noteId || page.isLocked) return
+      }
+      if (!socket.connected || socketToRoom.get(socket.id) !== noteId) return
+      for (const peer of recipients) {
+        if (peer?.connected && socketToRoom.get(peer.id) === noteId) peer.emit(event, data)
+      }
+    }
 
     // Join a note room
-    socket.on('join-room', async (payload: JoinRoomPayload) => {
+    onEvent('join-room', async (payload: JoinRoomPayload) => {
       const { noteId } = payload
       const request = ++roomRequest
 
@@ -235,7 +350,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     })
 
     // Leave a note room
-    socket.on('leave-room', (payload: LeaveRoomPayload) => {
+    onEvent('leave-room', (payload: LeaveRoomPayload) => {
       const { noteId } = payload
       ++roomRequest
       const roomId = getRoomId(noteId)
@@ -255,7 +370,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
     })
 
     // Content change - broadcast to others in the room (last-write-wins)
-    socket.on('content-change', async (payload: ContentChangePayload) => {
+    onEvent('content-change', async (payload: ContentChangePayload) => {
       const { noteId, content, title } = payload
       if (socketToRoom.get(socket.id) !== noteId) return
 
@@ -270,10 +385,8 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
       }
       if (socketToRoom.get(socket.id) !== noteId) return
 
-      const roomId = getRoomId(noteId)
-
       // Broadcast to other users in the room
-      socket.to(roomId).emit('content-update', {
+      await broadcast(noteId, 'content-update', {
         noteId,
         pageId: payload.pageId ?? null,
         content,
@@ -282,17 +395,15 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
           id: user.userId,
           name: user.name,
         },
-      })
+      }, payload.pageId)
     })
 
     // Cursor position update
-    socket.on('cursor-update', async (payload: CursorPayload) => {
+    onEvent('cursor-update', async (payload: CursorPayload) => {
       const { noteId, position } = payload
       if (socketToRoom.get(socket.id) !== noteId) return
       if (!await canAccessNote(user.userId, noteId)) return
       if (socketToRoom.get(socket.id) !== noteId) return
-      const roomId = getRoomId(noteId)
-
       // Update presence
       const roomState = roomUsers.get(noteId)
       if (roomState) {
@@ -303,7 +414,7 @@ export function setupCollaborationSocket(httpServer: HttpServer): SocketServer {
       }
 
       // Broadcast to others
-      socket.to(roomId).emit('cursor-moved', {
+      await broadcast(noteId, 'cursor-moved', {
         socketId: socket.id,
         userId: user.userId,
         name: user.name,

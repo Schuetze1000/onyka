@@ -17,7 +17,7 @@
     "dev:verbose": "pnpm run --parallel dev",
     "dev:web": "pnpm --filter @onyka/web dev",
     "dev:server": "pnpm --filter @onyka/server dev",
-    "build": "pnpm --filter @onyka/shared build && pnpm --filter '!@onyka/shared' run --parallel build",
+    "build": "pnpm --filter @onyka/shared build && pnpm --filter @onyka/server --filter @onyka/web --parallel run build",
     "build:web": "pnpm --filter @onyka/web build",
     "build:server": "pnpm --filter @onyka/server build",
     "start": "pnpm --filter @onyka/server start",
@@ -27,6 +27,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
     "typecheck": "pnpm run --parallel typecheck",
     "test": "pnpm run --parallel test",
+    "test:dev": "node --test scripts/dev.test.js",
     "clean": "rm -rf apps/*/dist apps/*/.turbo packages/*/dist node_modules/.cache",
     "db:generate": "pnpm --filter @onyka/server db:generate",
     "db:migrate": "pnpm --filter @onyka/server db:migrate",
@@ -36,31 +37,23 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
-    "@types/node": "^22.10.2",
-    "@typescript-eslint/eslint-plugin": "^8.53.1",
-    "@typescript-eslint/parser": "^8.53.1",
-    "eslint": "^9.39.2",
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "@typescript-eslint/eslint-plugin": "^8.72.0",
+    "@typescript-eslint/parser": "^8.72.0",
+    "eslint": "^9.39.5",
     "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "globals": "^17.1.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.11",
-    "prettier": "^3.4.2",
-    "typescript": "^5.7.2"
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.9.10",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@12.14.0",
   "engines": {
-    "node": ">=20.0.0",
-    "pnpm": ">=9.0.0"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "argon2",
-      "better-sqlite3",
-      "esbuild",
-      "sharp"
-    ]
+    "node": "^22.23.4 || ^24.22.1 || ^26.12.1",
+    "pnpm": ">=12.14.0 <13"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

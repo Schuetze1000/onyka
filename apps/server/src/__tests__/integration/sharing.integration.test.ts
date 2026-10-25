@@ -1,9 +1,9 @@
+import { createSchemaTables } from '../helpers/test-db.js'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { nanoid } from 'nanoid'
 import { eq, and } from 'drizzle-orm'
-import { getTableConfig } from 'drizzle-orm/sqlite-core'
 import * as schema from '../../db/schema.js'
 
 let sqlite: Database.Database
@@ -15,67 +15,7 @@ beforeAll(() => {
   sqlite = new Database(':memory:')
   testDb = drizzle(sqlite, { schema })
 
-  sqlite.exec(`
-    CREATE TABLE users (
-      id TEXT PRIMARY KEY NOT NULL,
-      username TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
-      name TEXT NOT NULL,
-      avatar_url TEXT,
-      two_factor_secret TEXT,
-      two_factor_enabled INTEGER DEFAULT false NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE notes (
-      id TEXT PRIMARY KEY NOT NULL,
-      title TEXT NOT NULL,
-      content TEXT DEFAULT '' NOT NULL,
-      mode TEXT DEFAULT 'text' NOT NULL,
-      folder_id TEXT,
-      owner_id TEXT NOT NULL,
-      is_deleted INTEGER DEFAULT false NOT NULL,
-      deleted_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE folders (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL,
-      parent_id TEXT,
-      owner_id TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE shares (
-      id TEXT PRIMARY KEY NOT NULL,
-      resource_id TEXT NOT NULL,
-      resource_type TEXT NOT NULL,
-      owner_id TEXT NOT NULL,
-      shared_with_id TEXT NOT NULL,
-      permission TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
-      FOREIGN KEY (shared_with_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-  `)
-
-  // This legacy fixture predates additive profile and editor columns. Drizzle
-  // includes those columns in inserts even when a test does not set them.
-  for (const table of [schema.users, schema.notes, schema.folders]) {
-    const { name, columns } = getTableConfig(table)
-    const existing = new Set((sqlite.prepare(`PRAGMA table_info("${name}")`).all() as { name: string }[]).map(c => c.name))
-    for (const column of columns) {
-      if (!existing.has(column.name)) {
-        sqlite.exec(`ALTER TABLE "${name}" ADD COLUMN "${column.name}" ${column.getSQLType()}`)
-      }
-    }
-  }
+  createSchemaTables(sqlite)
 
   // Create test users
   ownerUserId = nanoid()

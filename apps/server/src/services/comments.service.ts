@@ -68,6 +68,7 @@ export class CommentsService {
       throw new CommentsServiceError('Comment not found', 'COMMENT_NOT_FOUND', 404)
     }
 
+    await this.verifyAccess(comment.noteId, userId, 'read')
     if (comment.userId !== userId) {
       throw new CommentsServiceError('Access denied', 'ACCESS_DENIED', 403)
     }
@@ -93,6 +94,7 @@ export class CommentsService {
       throw new CommentsServiceError('Comment not found', 'COMMENT_NOT_FOUND', 404)
     }
 
+    await this.verifyAccess(comment.noteId, userId, 'read')
     const note = await noteRepository.findById(comment.noteId)
     const isAuthor = comment.userId === userId
     const isNoteOwner = note?.ownerId === userId
@@ -111,7 +113,7 @@ export class CommentsService {
   ): Promise<void> {
     const note = await noteRepository.findById(noteId)
 
-    if (!note) {
+    if (!note || note.isDeleted) {
       throw new CommentsServiceError('Note not found', 'NOTE_NOT_FOUND', 404)
     }
 

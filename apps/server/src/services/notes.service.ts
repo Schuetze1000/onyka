@@ -22,6 +22,9 @@ export class NotesServiceError extends Error {
 
 export class NotesService {
   async create(ownerId: string, input: NoteCreateInput): Promise<Note> {
+    if (input.content !== undefined && !await noteUploadRepository.canReferenceUploads(ownerId, input.content)) {
+      throw new NotesServiceError('Access denied to an attached file', 'UPLOAD_ACCESS_DENIED', 403)
+    }
     if (input.folderId) {
       const folder = await folderRepository.findById(input.folderId)
       if (!folder) throw new NotesServiceError('Folder not found', 'FOLDER_NOT_FOUND', 404)
@@ -78,6 +81,9 @@ export class NotesService {
     const hasAccess = await this.checkAccess(noteId, note.ownerId, userId, 'edit')
     if (!hasAccess) {
       throw new NotesServiceError('Access denied', 'ACCESS_DENIED', 403)
+    }
+    if (input.content !== undefined && !await noteUploadRepository.canReferenceUploads(userId, input.content)) {
+      throw new NotesServiceError('Access denied to an attached file', 'UPLOAD_ACCESS_DENIED', 403)
     }
 
     // Track words written for stats if tracking is enabled (fire and forget)

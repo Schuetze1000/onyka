@@ -220,7 +220,7 @@ export function HomePage() {
           </>
         )}
         {currentNote ? (
-          <NoteEditor note={currentNote} onUpdate={handleUpdateNote} onDelete={handleDeleteNote} />
+          <NoteEditor key={currentNote.id} note={currentNote} onUpdate={handleUpdateNote} onDelete={handleDeleteNote} />
         ) : (
           <div className="flex-1 flex items-center justify-center p-4 md:p-8 relative">
             <div

@@ -265,13 +265,14 @@ export class AuthService {
     if (!user) {
       throw new AuthError('User not found', 'USER_NOT_FOUND')
     }
+    if (user.isDisabled) throw new AuthError('Account disabled', 'ACCOUNT_DISABLED', 403)
 
     const newRefreshToken = await tokenService.rotateRefreshToken(refreshToken, user.id, metadata)
     if (!newRefreshToken) {
-      throw new AuthError('Session invalidated for security. Please login again.', 'TOKEN_THEFT_DETECTED')
+      throw new AuthError('Session was refreshed elsewhere. Please retry.', 'REFRESH_CONFLICT', 409)
     }
 
-    const accessToken = await tokenService.generateAccessToken(user.id, user.username)
+    const accessToken = await tokenService.generateAccessToken(user.id, user.username, newRefreshToken)
 
     return {
       accessToken,
@@ -320,6 +321,7 @@ export class AuthService {
 
       const newHash = await passwordService.hash(input.newPassword)
       await userRepository.updatePasswordHash(userId, newHash)
+      await tokenService.revokeAllUserTokens(userId)
     }
 
     return user

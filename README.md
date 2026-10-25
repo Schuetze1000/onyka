@@ -67,7 +67,7 @@ No `.env` file, no secrets to generate, no configuration. Everything is auto-gen
 
 ### Node.js
 
-Requires Node.js 20+ and pnpm 10+.
+Requires a supported, security-patched Node.js release: 22.23.4+, 24.22.1+, or 26.12.1+. Use pnpm 12.14.0 (the version pinned in package.json).
 
 ```bash
 git clone https://github.com/karl-cta/onyka.git && cd onyka
@@ -267,7 +267,7 @@ cloudflared tunnel --url http://localhost:3000
 ## Development
 
 ```bash
-pnpm dev          # Frontend (localhost:5173) + backend (localhost:3001)
+pnpm dev          # Frontend + backend; open the URL printed in the terminal
 pnpm build        # Build all packages
 pnpm lint         # ESLint
 pnpm typecheck    # TypeScript checks

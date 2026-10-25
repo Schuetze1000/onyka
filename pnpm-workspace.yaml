@@ -5,3 +5,8 @@ allowBuilds:
   argon2: true
   better-sqlite3: true
   esbuild: true
+
+overrides:
+  "esbuild@<0.25.0": "^0.25.12"
+  "postcss-selector-parser@<7.1.6": "^7.1.6"
+  "zod@<4.6.6": "^4.6.7"

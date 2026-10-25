@@ -11,6 +11,12 @@ const NOTE_CACHE_MAX = 20
 let _latestFetchId: string | null = null
 let _fetchTimer: ReturnType<typeof setTimeout> | null = null
 
+export function resetNoteCache() {
+  cancelPendingFetch()
+  _latestFetchId = null
+  noteCache.clear()
+}
+
 function cancelPendingFetch() {
   if (_fetchTimer) {
     clearTimeout(_fetchTimer)

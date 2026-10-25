@@ -66,7 +66,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().default('Onyka <noreply@onyka.app>'),
-  SMTP_SECURE: z.coerce.boolean().default(false),
+  SMTP_SECURE: z.enum(['true', 'false']).default('false').transform(value => value === 'true'),
 
   ENCRYPTION_KEY: z.string()
     .length(64, 'ENCRYPTION_KEY must be 64 hex chars (32 bytes)')
@@ -126,7 +126,7 @@ export const env = parsed.data
 // ---------------------------------------------------------------------------
 // Data directory — single source of truth for all persisted files
 // ---------------------------------------------------------------------------
-const dataDir = resolve(dirname(env.DATABASE_URL))
+const dataDir = resolve(dirname(env.DATABASE_URL.replace(/^file:/, '')))
 mkdirSync(dataDir, { recursive: true })
 
 /**
@@ -156,17 +156,19 @@ function resolveSecret(opts: {
     }
   }
 
+  if (existsSync(filePath)) throw new Error(`Invalid persisted ${opts.name}; refusing to replace a secret used by existing data`)
+
   // 3. Generate a new one
   const generated = opts.generate()
 
   // Persist to data directory
   try {
-    writeFileSync(filePath, generated + '\n', { mode: 0o600 })
+    writeFileSync(filePath, generated + '\n', { mode: 0o600, flag: 'wx' })
     console.log(`\x1b[32m✓ ${opts.name} auto-generated and saved to data directory\x1b[0m`)
   } catch (err) {
     console.error(`\x1b[31m✗ ${opts.name} generated but could NOT be persisted!\x1b[0m`)
     console.error(`  Path: ${filePath}`)
-    console.error(`  Error: ${err instanceof Error ? err.message : err}`)
+    throw new Error(`Cannot persist ${opts.name}; startup stopped to prevent data loss`, { cause: err })
   }
 
   // Also append to .env if it exists (dev convenience)

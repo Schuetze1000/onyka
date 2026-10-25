@@ -86,12 +86,15 @@ export class ExportService {
       stream.destroy(err)
     })
     archive.pipe(stream)
+    stream.on('close', () => archive.abort())
 
     // Recursively add notes from the folder tree
     const counter = { count: 0 }
-    await this.addFolderToArchive(archive, targetFolder, '', format, 0, counter)
-
-    await archive.finalize()
+    // Return the stream before producing the archive: large exports need a
+    // consumer attached to release backpressure while finalizing the ZIP.
+    void this.addFolderToArchive(archive, targetFolder, '', format, 0, counter)
+      .then(() => archive.finalize())
+      .catch((error: Error) => { archive.abort(); stream.destroy(error) })
 
     const filename = this.sanitizeFilename(folder.name || 'folder') + '.zip'
     return { stream, filename }

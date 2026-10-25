@@ -10,6 +10,9 @@ import { TwoFactorError } from '../services/two-factor.service.js'
 import { EmailVerificationError } from '../services/email-verification.service.js'
 import { ExportServiceError } from '../services/export.service.js'
 import { SparksServiceError } from '../services/sparks.service.js'
+import { PagesServiceError } from '../services/pages.service.js'
+import { CommentsServiceError } from '../services/comments.service.js'
+import { RecapsServiceError } from '../services/recaps.service.js'
 import { logger } from '../utils/logger.js'
 
 export class AppError extends Error {
@@ -24,8 +27,30 @@ export class AppError extends Error {
   }
 }
 
+function expectedStatus(err: Error): number | undefined {
+  if (err instanceof ZodError) return 400
+  if (
+    err instanceof AppError || err instanceof AuthError ||
+    err instanceof NotesServiceError || err instanceof FoldersServiceError ||
+    err instanceof TagsServiceError || err instanceof SharingServiceError ||
+    err instanceof TwoFactorError || err instanceof EmailVerificationError ||
+    err instanceof ExportServiceError || err instanceof SparksServiceError ||
+    err instanceof PagesServiceError || err instanceof CommentsServiceError ||
+    err instanceof RecapsServiceError
+  ) return err.statusCode
+  return undefined
+}
+
 export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
-  logger.error('Unhandled error', err, { path: req.path, method: req.method })
+  const statusCode = expectedStatus(err)
+  const context = { path: req.path, method: req.method, statusCode: statusCode ?? 500 }
+  if (statusCode !== undefined && statusCode >= 400 && statusCode < 500) {
+    // Rejected credentials, expired sessions and invalid inputs are handled
+    // requests. Login failures already have a separate security warning.
+    logger.debug('Request rejected', context)
+  } else {
+    logger.error(statusCode === undefined ? 'Unhandled error' : 'Request failed', err, context)
+  }
 
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
@@ -34,6 +59,14 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
         message: err.message,
         details: err.details,
       },
+      timestamp: new Date().toISOString(),
+      path: req.path,
+    })
+  }
+
+  if (err instanceof PagesServiceError || err instanceof CommentsServiceError || err instanceof RecapsServiceError) {
+    return res.status(err.statusCode).json({
+      error: { code: err.code, message: err.message },
       timestamp: new Date().toISOString(),
       path: req.path,
     })
@@ -144,7 +177,7 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
 
   if (err instanceof ZodError) {
     const details: Record<string, string[]> = {}
-    err.errors.forEach((e) => {
+    err.issues.forEach((e) => {
       const path = e.path.join('.')
       if (!details[path]) details[path] = []
       details[path].push(e.message)

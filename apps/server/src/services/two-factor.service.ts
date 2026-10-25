@@ -7,7 +7,6 @@ import { emailService } from './email.service.js'
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000 // 10 minutes
 const OTP_LENGTH = 6
-const OTP_MAX_ATTEMPTS = 5
 const TRUSTED_DEVICE_DAYS = 30
 
 export class TwoFactorError extends Error {
@@ -27,8 +26,7 @@ export class TwoFactorService {
    */
   private generateOtpCode(): string {
     // Generate cryptographically secure random number
-    const randomBytes = crypto.randomBytes(4)
-    const randomNumber = randomBytes.readUInt32BE(0) % 1000000
+    const randomNumber = crypto.randomInt(0, 1000000)
     return randomNumber.toString().padStart(OTP_LENGTH, '0')
   }
 
@@ -170,28 +168,7 @@ If you didn't request this code, you can safely ignore this email.
    * Verify OTP code
    */
   async verifyCode(userId: string, code: string, purpose: OtpPurpose): Promise<boolean> {
-    const storedCode = await twoFactorRepository.findValidCode(userId, purpose)
-    if (!storedCode) {
-      return false
-    }
-
-    // Block brute-force: invalidate code after max attempts
-    if (storedCode.attempts >= OTP_MAX_ATTEMPTS) {
-      await twoFactorRepository.invalidateCode(storedCode.id)
-      return false
-    }
-
-    const codeHash = this.hashOtp(code)
-    const isValid = storedCode.code === codeHash
-
-    if (!isValid) {
-      await twoFactorRepository.incrementAttempts(storedCode.id)
-      return false
-    }
-
-    // Mark as used
-    await twoFactorRepository.markAsUsed(storedCode.id)
-    return true
+    return twoFactorRepository.consumeCode(userId, purpose, this.hashOtp(code))
   }
 
   /**

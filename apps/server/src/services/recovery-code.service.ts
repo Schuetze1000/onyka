@@ -32,16 +32,7 @@ export class RecoveryCodeService {
     const normalizedCode = code.toUpperCase().replace(/[^A-Z0-9]/g, '')
     const codeHash = this.hashCode(normalizedCode)
 
-    // Find unused code
-    const recoveryCode = await recoveryCodeRepository.findUnusedByHash(userId, codeHash)
-    if (!recoveryCode) {
-      return false
-    }
-
-    // Mark as used
-    await recoveryCodeRepository.markAsUsed(recoveryCode.id)
-
-    return true
+    return recoveryCodeRepository.consumeCode(userId, codeHash)
   }
 
   /**

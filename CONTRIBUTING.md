@@ -10,7 +10,9 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` handles everything automatically — generates secrets, runs migrations, starts frontend (`:5173`) and backend (`:3001`). No `.env` to create, no manual setup.
+`pnpm dev` handles everything automatically — generates secrets, runs migrations, and starts frontend and backend. The frontend prefers port 5173 and automatically uses an available port if it is occupied or reserved by Windows. Open the URL printed in the terminal. The backend uses `PORT` from your environment or server `.env` (default 3001); its proxy and browser origin are configured automatically for this run.
+
+Set `DEV_WEB_PORT` to prefer another frontend port. Run `pnpm test:dev` to check port selection and CLI startup.
 
 ## Workflow
 

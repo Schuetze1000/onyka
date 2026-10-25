@@ -1,7 +1,6 @@
 import crypto from 'crypto'
 import { userRepository, passwordResetRepository } from '../repositories/index.js'
 import { passwordService } from './password.service.js'
-import { tokenService } from './token.service.js'
 import { emailService } from './email.service.js'
 import { logger } from '../utils/logger.js'
 import { env } from '../config/env.js'
@@ -12,7 +11,7 @@ const MIN_REQUEST_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes between requests
 
 export class PasswordResetError extends AppError {
   constructor(message: string, code: string, statusCode: number = 400) {
-    super(message, code, statusCode)
+    super(code, message, statusCode)
     this.name = 'PasswordResetError'
   }
 }
@@ -27,7 +26,7 @@ export class PasswordResetService {
     // Prevent timing attacks
     await this.delay(100 + Math.random() * 200)
 
-    if (!user || !user.email) {
+    if (!user || !user.email || !user.emailVerified || user.isDisabled) {
       return
     }
 
@@ -74,10 +73,9 @@ export class PasswordResetService {
     }
 
     const passwordHash = await passwordService.hash(newPassword)
-    await userRepository.updatePasswordHash(resetToken.userId, passwordHash)
-    await passwordResetRepository.markAsUsed(resetToken.id)
-    await passwordResetRepository.invalidateAllForUser(resetToken.userId)
-    await tokenService.revokeAllUserTokens(resetToken.userId)
+    if (!await passwordResetRepository.consumeAndResetPassword(tokenHash, passwordHash)) {
+      throw new PasswordResetError('Invalid or expired token', 'INVALID_TOKEN')
+    }
   }
 
   /**

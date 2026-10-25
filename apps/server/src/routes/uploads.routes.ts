@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { Router, type Request, type Response, type NextFunction } from 'express'
 import multer from 'multer'
 import { extname } from 'path'
@@ -6,6 +7,8 @@ import rateLimit from 'express-rate-limit'
 import { authenticate } from '../middleware/auth.js'
 import {
   uploadsService,
+  UploadQuotaError,
+  isUserAvatar,
   validateImageFile,
   validateFileContent,
   processUploadedFile,
@@ -121,6 +124,8 @@ router.post(
       const result = processUploadedFile(req.file)
       res.status(201).json({ upload: result })
     } catch (err) {
+      if (req.file) deleteUploadedFile(req.file.filename)
+      if (err instanceof UploadQuotaError) return res.status(413).json({ error: { code: 'STORAGE_QUOTA_EXCEEDED', message: err.message } })
       logger.error('Upload failed', err instanceof Error ? err : undefined)
       res.status(500).json({
         error: { code: 'UPLOAD_FAILED', message: 'Failed to upload file' },
@@ -134,50 +139,52 @@ router.post(
  * Access granted if the user owns the image, is admin, or can read a note
  * that references this upload.
  */
-router.get('/:filename', authenticate, downloadRateLimit, async (req, res) => {
-  const { filename } = req.params
-  const userId = req.userId!
-  const isAdmin = req.user?.role === 'admin'
+router.get('/:filename', authenticate, downloadRateLimit, async (req, res, next) => {
+  try {
+    const filename = z.string().parse(req.params.filename)
+    const userId = req.userId!
+    const isAdmin = req.user?.role === 'admin'
 
-  const filePath = getUploadPath(filename)
-  if (!filePath) {
-    return res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'File not found' },
-    })
-  }
-
-  const ownerId = await getUploadOwner(filename)
-  if (ownerId && ownerId !== userId && !isAdmin) {
-    const hasAccess = await shareRepository.hasAccessToUpload(userId, filename)
-    if (!hasAccess) {
-      return res.status(403).json({
-        error: { code: 'FORBIDDEN', message: 'Access denied' },
+    const filePath = getUploadPath(filename)
+    if (!filePath) {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'File not found' },
       })
     }
-  }
 
-  // Decrypt and serve the file
-  const decryptedBuffer = readDecryptedFile(filePath)
+    const ownerId = await getUploadOwner(filename)
+    if (ownerId !== userId && !isAdmin && !await isUserAvatar(filename)) {
+      const hasAccess = ownerId !== null && await shareRepository.hasAccessToUpload(userId, filename)
+      if (!hasAccess) {
+        return res.status(403).json({
+          error: { code: 'FORBIDDEN', message: 'Access denied' },
+        })
+      }
+    }
 
-  // Determine content type from extension
-  const ext = extname(filename).toLowerCase()
-  const contentTypes: Record<string, string> = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-  }
+    // Decrypt and serve the file
+    const decryptedBuffer = readDecryptedFile(filePath)
 
-  const contentType = contentTypes[ext] || 'application/octet-stream'
+    // Determine content type from extension
+    const ext = extname(filename).toLowerCase()
+    const contentTypes: Record<string, string> = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+    }
 
-  res.set({
-    'Content-Type': contentType,
-    'Content-Length': String(decryptedBuffer.length),
-    'Cache-Control': 'private, max-age=31536000, immutable',
-  })
+    const contentType = contentTypes[ext] || 'application/octet-stream'
 
-  res.send(decryptedBuffer)
+    res.set({
+      'Content-Type': contentType,
+      'Content-Length': String(decryptedBuffer.length),
+      'Cache-Control': 'private, no-store',
+    })
+
+    res.send(decryptedBuffer)
+  } catch (error) { next(error) }
 })
 
 /**
@@ -185,27 +192,29 @@ router.get('/:filename', authenticate, downloadRateLimit, async (req, res) => {
  * Delete an uploaded file
  * Requires authentication + ownership (or admin)
  */
-router.delete('/:filename', authenticate, async (req, res) => {
-  const { filename } = req.params
-  const userId = req.userId!
-  const isAdmin = req.user?.role === 'admin'
+router.delete('/:filename', authenticate, async (req, res, next) => {
+  try {
+    const filename = z.string().parse(req.params.filename)
+    const userId = req.userId!
+    const isAdmin = req.user?.role === 'admin'
 
-  // Check ownership
-  const ownerId = await getUploadOwner(filename)
-  if (ownerId && ownerId !== userId && !isAdmin) {
-    return res.status(403).json({
-      error: { code: 'FORBIDDEN', message: 'You do not own this file' },
-    })
-  }
+    // Check ownership
+    const ownerId = await getUploadOwner(filename)
+    if (ownerId !== userId && !isAdmin) {
+      return res.status(403).json({
+        error: { code: 'FORBIDDEN', message: 'You do not own this file' },
+      })
+    }
 
-  const deleted = await deleteTrackedUpload(filename)
-  if (!deleted) {
-    return res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'File not found' },
-    })
-  }
+    const deleted = await deleteTrackedUpload(filename)
+    if (!deleted) {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'File not found' },
+      })
+    }
 
-  res.status(204).send()
+    res.status(204).send()
+  } catch (error) { next(error) }
 })
 
 // Error handler for multer errors

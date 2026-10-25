@@ -321,6 +321,7 @@
       "xl": "Très grand",
       "xxl": "Maximum"
     },
+    "typography": "Typographie",
     "font_family": "Police",
     "font_family_desc": "Police de caractères dans l'éditeur",
     "account": "Compte",

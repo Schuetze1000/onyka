@@ -14,6 +14,20 @@ export interface EmailVerificationToken {
 }
 
 export class EmailVerificationRepository {
+  async consumeAndVerify(tokenHash: string): Promise<{ userId: string; email: string } | null> {
+    return db.transaction((tx) => {
+      const now = new Date()
+      const token = tx.select().from(emailVerificationTokens).where(and(
+        eq(emailVerificationTokens.tokenHash, tokenHash), gt(emailVerificationTokens.expiresAt, now)
+      )).get()
+      if (!token) return null
+      tx.update(schema.users).set({ email: token.email, emailVerified: true, updatedAt: now })
+        .where(eq(schema.users.id, token.userId)).run()
+      tx.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, token.userId)).run()
+      return { userId: token.userId, email: token.email }
+    })
+  }
+
   async create(userId: string, email: string, tokenHash: string, expiresAt: Date): Promise<void> {
     const now = new Date()
     const id = nanoid()

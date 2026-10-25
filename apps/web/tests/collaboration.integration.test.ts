@@ -3,22 +3,28 @@ import { createServer } from 'node:http'
 import { io as connect, type Socket } from 'socket.io-client'
 import { setupCollaborationSocket } from '../../server/src/websocket/collaboration'
 
+const revoked = vi.hoisted(() => ({ shares: new Set<string>(), sessions: new Set<string>() }))
+
 vi.mock('../../server/src/config/env.js', () => ({ env: { CORS_ORIGIN: 'http://localhost' } }))
 vi.mock('../../server/src/middleware/auth.js', () => ({ SYSTEM_USERNAME: 'system' }))
-vi.mock('../../server/src/utils/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }))
+vi.mock('../../server/src/repositories/page.repository.js', () => ({ pageRepository: {
+  findById: async (id: string) => ({ id, noteId: 'private-owner', isLocked: false, isDeleted: false }),
+} }))
+vi.mock('../../server/src/utils/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('../../server/src/services/settings.service.js', () => ({ settingsService: { isAuthDisabled: async () => false } }))
 vi.mock('../../server/src/services/token.service.js', () => ({ tokenService: {
   verifyAccessToken: async (token: string) => {
     await new Promise(resolve => setTimeout(resolve, 20))
-    return token === 'expired' ? null : { sub: token }
+    return token === 'expired' || revoked.sessions.has(token) ? null : { sub: token }
   },
 } }))
 vi.mock('../../server/src/repositories/index.js', () => ({
+  noteRepository: { findById: async (id: string) => ({ id, isDeleted: id === 'deleted' }) },
   userRepository: { findById: async (id: string) => ({ id, name: id, isDisabled: false }) },
   shareRepository: { findByResource: async () => [{ id: 'share' }] },
 }))
 vi.mock('../../server/src/services/sharing.service.js', () => ({ sharingService: {
-  getPermissionLevel: async (user: string, note: string) => note === 'private-owner' && user === 'alice' ? 'owner'
+  getPermissionLevel: async (user: string, note: string) => revoked.shares.has(user) ? null : note === 'private-owner' && user === 'alice' ? 'owner'
     : note !== 'shared' ? null : user === 'reader' ? 'read' : 'edit',
 } }))
 
@@ -108,4 +114,63 @@ describe('Two-client collaboration connection', () => {
     expect((await denied).message).toBe('Access denied')
     socket.disconnect()
   })
+  it('removes a revoked recipient before sending further note content', async () => {
+    const writer = client('alice', 'polling'), reader = client('revocable', 'websocket')
+    for (const socket of [writer, reader]) {
+      socket.on('connect', () => socket.emit('join-room', { noteId: 'shared' }))
+      const joined = event(socket, 'room-joined'); socket.connect(); await joined
+    }
+    const updates = vi.fn(); reader.on('content-update', updates)
+    revoked.shares.add('revocable')
+    const removed = event(reader, 'access-revoked')
+    writer.emit('content-change', { noteId: 'shared', title: 'Secret', content: 'After revocation' })
+    await removed
+    expect(updates).not.toHaveBeenCalled()
+    writer.disconnect(); reader.disconnect()
+  })
+  it('disconnects a revoked session even when it only receives updates', async () => {
+    const writer = client('alice', 'polling'), reader = client('inactive-session', 'websocket')
+    for (const socket of [writer, reader]) {
+      socket.on('connect', () => socket.emit('join-room', { noteId: 'shared' }))
+      const joined = event(socket, 'room-joined'); socket.connect(); await joined
+    }
+    const updates = vi.fn(); reader.on('content-update', updates)
+    revoked.sessions.add('inactive-session')
+    const rejected = event(reader, 'auth-error')
+    writer.emit('content-change', { noteId: 'shared', title: 'Secret', content: 'After logout' })
+    await rejected
+    expect(updates).not.toHaveBeenCalled()
+    writer.disconnect(); reader.disconnect()
+  })
+  it('rejects malformed messages without breaking the connection or later joins', async () => {
+    const socket = client('alice', 'polling')
+    const connected = event(socket, 'connect'); socket.connect(); await connected
+    const rejected = event(socket, 'error'); socket.emit('join-room', null); await rejected
+    const joined = event(socket, 'room-joined'); socket.emit('join-room', { noteId: 'shared' }); await joined
+    expect(socket.connected).toBe(true)
+    socket.disconnect()
+  })
+  it('rejects WebSocket handshakes from an untrusted browser origin', async () => {
+    const socket = connect(url, { autoConnect: false, transports: ['websocket'], reconnection: false,
+      extraHeaders: { Cookie: 'access_token=alice', Origin: 'https://evil.example' }, forceNew: true })
+    clients.push(socket)
+    const rejected = event(socket, 'connect_error'); socket.connect(); await rejected
+    expect(socket.connected).toBe(false)
+  })
+
+  it('lets readers send cursors but prevents them from publishing content', async () => {
+    const writer = client('alice', 'polling'), reader = client('reader', 'websocket')
+    for (const socket of [writer, reader]) {
+      socket.on('connect', () => socket.emit('join-room', { noteId: 'shared' }))
+      const joined = event(socket, 'room-joined'); socket.connect(); await joined
+    }
+    const updates = vi.fn(); writer.on('content-update', updates)
+    const cursor = event(writer, 'cursor-moved')
+    reader.emit('content-change', { noteId: 'shared', title: 'Spoofed', content: 'Unauthorized change' })
+    reader.emit('cursor-update', { noteId: 'shared', position: { from: 0, to: 0 } })
+    await cursor
+    expect(updates).not.toHaveBeenCalled()
+    writer.disconnect(); reader.disconnect()
+  })
+
 })

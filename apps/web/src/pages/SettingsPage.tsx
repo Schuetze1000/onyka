@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   IoArrowBackOutline,
   IoShieldCheckmarkOutline,
@@ -30,21 +30,22 @@ export function SettingsPage() {
   const [showEmptyTrashDialog, setShowEmptyTrashDialog] = useState(false)
   const [isEmptyingTrash, setIsEmptyingTrash] = useState(false)
 
-  useEffect(() => {
-    fetchSettings()
-    fetchDeletedNotes()
-  }, [fetchSettings])
-
-  const fetchDeletedNotes = async () => {
+  const fetchDeletedNotes = useCallback(async () => {
     setIsLoadingTrash(true)
     try {
       const { notes } = await notesApi.list({ deleted: true })
       setDeletedNotes(notes)
     } catch {
+      toast.error(t('common.error'))
     } finally {
       setIsLoadingTrash(false)
     }
-  }
+  }, [t])
+
+  useEffect(() => {
+    fetchSettings()
+    void fetchDeletedNotes()
+  }, [fetchSettings, fetchDeletedNotes])
 
   const handleRestoreNote = async (noteId: string) => {
     setRestoringId(noteId)

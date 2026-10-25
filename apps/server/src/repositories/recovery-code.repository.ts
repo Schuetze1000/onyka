@@ -5,6 +5,13 @@ import { db, schema } from '../db/index.js'
 const { recoveryCodes } = schema
 
 export class RecoveryCodeRepository {
+  async consumeCode(userId: string, codeHash: string): Promise<boolean> {
+    const result = db.update(recoveryCodes).set({ usedAt: new Date() }).where(and(
+      eq(recoveryCodes.userId, userId), eq(recoveryCodes.codeHash, codeHash), isNull(recoveryCodes.usedAt)
+    )).run()
+    return result.changes === 1
+  }
+
   async create(userId: string, codeHash: string): Promise<void> {
     const now = new Date()
     const id = nanoid()

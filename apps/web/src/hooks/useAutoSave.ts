@@ -11,6 +11,7 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
   const [status, setStatus] = useState<SaveStatus>('saved')
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isMountedRef = useRef(true)
+  const revisionRef = useRef(0)
 
   useEffect(() => {
     isMountedRef.current = true
@@ -23,6 +24,7 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
   }, [])
 
   const triggerSave = useCallback(() => {
+    const revision = ++revisionRef.current
     setStatus('unsaved')
 
     if (timeoutRef.current) {
@@ -35,11 +37,11 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
       setStatus('saving')
       try {
         await onSave()
-        if (isMountedRef.current) {
+        if (isMountedRef.current && revision === revisionRef.current) {
           setStatus('saved')
         }
       } catch {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && revision === revisionRef.current) {
           setStatus('error')
         }
       }
@@ -47,6 +49,7 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
   }, [onSave, delay])
 
   const cancel = useCallback(() => {
+    revisionRef.current++
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
@@ -55,6 +58,7 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
   }, [])
 
   const saveNow = useCallback(async () => {
+    const revision = ++revisionRef.current
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
@@ -63,11 +67,11 @@ export function useAutoSave({ onSave, delay = 1000 }: UseAutoSaveOptions) {
     setStatus('saving')
     try {
       await onSave()
-      if (isMountedRef.current) {
+      if (isMountedRef.current && revision === revisionRef.current) {
         setStatus('saved')
       }
     } catch {
-      if (isMountedRef.current) {
+      if (isMountedRef.current && revision === revisionRef.current) {
         setStatus('error')
       }
     }

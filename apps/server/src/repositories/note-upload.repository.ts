@@ -2,10 +2,24 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { db, schema } from '../db/index.js'
 import { decrypt } from '../utils/crypto.js'
 import { extractUploadFilenames } from '../utils/upload-refs.js'
+import { shareRepository } from './share.repository.js'
 
 const { noteUploads, notes, notePages } = schema
 
 export class NoteUploadRepository {
+  /** Check access before storing HTML. A guessed URL must not create its own grant. */
+  async canReferenceUploads(userId: string, content: string): Promise<boolean> {
+    const filenames = extractUploadFilenames(content)
+    if (filenames.length === 0) return true
+    const rows = await db.select({ filename: schema.uploads.filename, ownerId: schema.uploads.ownerId })
+      .from(schema.uploads).where(inArray(schema.uploads.filename, filenames))
+    const owners = new Map(rows.map(row => [row.filename, row.ownerId]))
+    for (const filename of filenames) {
+      const ownerId = owners.get(filename)
+      if (!ownerId || (ownerId !== userId && !await shareRepository.hasAccessToUpload(userId, filename))) return false
+    }
+    return true
+  }
   async syncFromNoteContent(noteId: string, noteContent: string): Promise<void> {
     const filenames = new Set(extractUploadFilenames(noteContent))
 

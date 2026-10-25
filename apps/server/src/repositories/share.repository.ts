@@ -13,7 +13,10 @@ export class ShareRepository {
   private effectiveResources(userId?: string) {
     return sql`WITH RECURSIVE grants(id, resource_id, resource_type, owner_id, shared_with_id, permission, created_at) AS (
       SELECT id, resource_id, resource_type, owner_id, shared_with_id, permission, created_at
-      FROM shares ${userId ? sql`WHERE shared_with_id = ${userId}` : sql``}
+      FROM shares s ${userId ? sql`WHERE shared_with_id = ${userId}` : sql`WHERE 1 = 1`}
+        AND (resource_type <> 'note' OR EXISTS (
+          SELECT 1 FROM notes n WHERE n.id = s.resource_id AND n.owner_id = s.owner_id AND n.is_deleted = 0
+        ))
       UNION
       SELECT g.id, f.id, 'folder', g.owner_id, g.shared_with_id, g.permission, g.created_at
       FROM grants g JOIN folders f ON g.resource_type = 'folder'
@@ -21,7 +24,7 @@ export class ShareRepository {
       UNION
       SELECT g.id, n.id, 'note', g.owner_id, g.shared_with_id, g.permission, g.created_at
       FROM grants g JOIN notes n ON g.resource_type = 'folder'
-        AND n.folder_id = g.resource_id AND n.owner_id = g.owner_id
+        AND n.folder_id = g.resource_id AND n.owner_id = g.owner_id AND n.is_deleted = 0
     )`
   }
 

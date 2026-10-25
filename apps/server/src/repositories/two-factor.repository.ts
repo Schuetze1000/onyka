@@ -20,6 +20,21 @@ export interface EmailOtpCode {
 const MAX_ATTEMPTS = 5
 
 export class TwoFactorRepository {
+  async consumeCode(userId: string, purpose: OtpPurpose, codeHash: string): Promise<boolean> {
+    return db.transaction((tx) => {
+      const code = tx.select().from(emailOtpCodes).where(and(
+        eq(emailOtpCodes.userId, userId), eq(emailOtpCodes.purpose, purpose)
+      )).get()
+      if (!code || code.usedAt || code.expiresAt <= new Date() || code.attempts >= MAX_ATTEMPTS) return false
+      const valid = code.code === codeHash
+      tx.update(emailOtpCodes).set(valid
+        ? { usedAt: new Date() }
+        : { attempts: code.attempts + 1 }
+      ).where(eq(emailOtpCodes.id, code.id)).run()
+      return valid
+    })
+  }
+
   /**
    * Create a new OTP code for a user
    * Deletes any existing codes for the same purpose
@@ -28,18 +43,20 @@ export class TwoFactorRepository {
     const now = new Date()
     const id = nanoid()
 
-    await db.delete(emailOtpCodes).where(
-      and(eq(emailOtpCodes.userId, userId), eq(emailOtpCodes.purpose, purpose))
-    )
+    db.transaction(tx => {
+      tx.delete(emailOtpCodes).where(
+        and(eq(emailOtpCodes.userId, userId), eq(emailOtpCodes.purpose, purpose))
+      ).run()
 
-    await db.insert(emailOtpCodes).values({
-      id,
-      userId,
-      code: codeHash,
-      purpose,
-      expiresAt,
-      attempts: 0,
-      createdAt: now,
+      tx.insert(emailOtpCodes).values({
+        id,
+        userId,
+        code: codeHash,
+        purpose,
+        expiresAt,
+        attempts: 0,
+        createdAt: now,
+      }).run()
     })
   }
 

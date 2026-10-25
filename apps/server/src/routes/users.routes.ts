@@ -8,6 +8,11 @@ import { authenticate, invalidateDefaultUserCache } from '../middleware/auth.js'
 import { logger } from '../utils/logger.js'
 import {
   uploadsService,
+  encryptUploadedFile,
+  trackUpload,
+  deleteTrackedUpload,
+  checkUserQuota,
+  UploadQuotaError,
   validateImageFile,
   validateFileContent,
   processUploadedFile,
@@ -115,6 +120,7 @@ router.patch('/me/preferences', async (req, res, next) => {
  * Upload user avatar
  */
 router.post('/me/avatar', avatarUpload.single('avatar'), async (req, res) => {
+  let committed = false
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -136,26 +142,30 @@ router.post('/me/avatar', avatarUpload.single('avatar'), async (req, res) => {
       return res.status(400).json({ error: contentError })
     }
 
-    // Delete old avatar if exists
+    const quotaError = await checkUserQuota(req.userId!, req.file.size)
+    if (quotaError) { deleteUploadedFile(req.file.filename); return res.status(413).json({ error: quotaError }) }
+    encryptUploadedFile(req.file.filename)
+    await trackUpload(req.file, req.userId!)
     const oldAvatarUrl = await userRepository.getAvatarUrl(req.userId!)
-    if (oldAvatarUrl) {
-      const oldFilename = oldAvatarUrl.split('/').pop()
-      if (oldFilename) {
-        deleteUploadedFile(oldFilename)
-      }
-    }
 
     // Process and get URL
     const result = processUploadedFile(req.file)
 
     // Update user avatarUrl
     const user = await userRepository.setAvatarUrl(req.userId!, result.url)
+    if (!user) throw new Error('User no longer exists')
+    committed = true
 
+    if (oldAvatarUrl) {
+      const oldFilename = oldAvatarUrl.split('/').pop()
+      if (oldFilename) await deleteTrackedUpload(oldFilename).catch(error => logger.error('Old avatar cleanup failed', error))
+    }
     // Invalidate cache for AUTH_DISABLED mode
     invalidateDefaultUserCache()
-
     res.status(200).json({ user, avatarUrl: result.url })
   } catch (err) {
+    if (req.file && !committed) await deleteTrackedUpload(req.file.filename).catch(error => logger.error('Avatar cleanup failed', error))
+    if (err instanceof UploadQuotaError) return res.status(413).json({ error: { code: 'STORAGE_QUOTA_EXCEEDED', message: err.message } })
     logger.error('Avatar upload error', err instanceof Error ? err : undefined)
     res.status(500).json({
       error: { code: 'UPLOAD_FAILED', message: 'Failed to upload avatar' },
@@ -170,15 +180,14 @@ router.post('/me/avatar', avatarUpload.single('avatar'), async (req, res) => {
 router.delete('/me/avatar', async (req, res, next) => {
   try {
     const currentAvatarUrl = await userRepository.getAvatarUrl(req.userId!)
+    const user = await userRepository.setAvatarUrl(req.userId!, null)
 
     if (currentAvatarUrl) {
       const filename = currentAvatarUrl.split('/').pop()
       if (filename) {
-        deleteUploadedFile(filename)
+        await deleteTrackedUpload(filename).catch(error => logger.error('Old avatar cleanup failed', error))
       }
     }
-
-    const user = await userRepository.setAvatarUrl(req.userId!, null)
 
     // Invalidate cache for AUTH_DISABLED mode
     invalidateDefaultUserCache()

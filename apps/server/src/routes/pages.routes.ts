@@ -2,6 +2,8 @@ import { Router, type Router as RouterType } from 'express'
 import { z } from 'zod'
 import { pagesService } from '../services/pages.service.js'
 import { authenticate } from '../middleware/auth.js'
+import { notifyPageLockChanged } from '../websocket/collaboration.js'
+import { logger } from '../utils/logger.js'
 
 const router: RouterType = Router()
 
@@ -61,6 +63,11 @@ router.patch('/:id', async (req, res, next) => {
   try {
     const input = updatePageSchema.parse(req.body)
     const page = await pagesService.updatePage(req.params.id, req.userId!, input)
+    if (input.isLocked !== undefined) {
+      await notifyPageLockChanged(page.noteId, page.id).catch(error => {
+        logger.error('Failed to notify page lock change', error instanceof Error ? error : undefined)
+      })
+    }
     res.json({ page })
   } catch (error) {
     next(error)

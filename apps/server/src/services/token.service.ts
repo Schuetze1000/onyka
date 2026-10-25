@@ -4,6 +4,8 @@ import { env } from '../config/env.js'
 import {
   refreshTokenRepository,
   revokedAccessTokenRepository,
+  trustedDeviceRepository,
+  twoFactorRepository,
   type SessionInfo,
 } from '../repositories/index.js'
 
@@ -12,6 +14,7 @@ export interface AccessTokenPayload extends JWTPayload {
   username: string
   type: 'access'
   jti: string
+  sid: string
 }
 
 export interface RefreshTokenPayload extends JWTPayload {
@@ -58,10 +61,8 @@ export class TokenService {
   ): Promise<TokenPair> {
     const refreshExpiryDays = rememberMe ? this.refreshExpiresInDaysLong : REFRESH_TOKEN_SHORT_DAYS
 
-    const [accessToken, refreshToken] = await Promise.all([
-      this.generateAccessToken(userId, username),
-      this.generateRefreshToken(userId, refreshExpiryDays, metadata),
-    ])
+    const refreshToken = await this.generateRefreshToken(userId, refreshExpiryDays, metadata)
+    const accessToken = await this.generateAccessToken(userId, username, refreshToken)
 
     return {
       accessToken,
@@ -70,9 +71,11 @@ export class TokenService {
     }
   }
 
-  async generateAccessToken(userId: string, username: string): Promise<string> {
+  async generateAccessToken(userId: string, username: string, refreshToken: string): Promise<string> {
+    const session = await refreshTokenRepository.findByTokenHash(this.hashToken(refreshToken))
+    if (!session || session.userId !== userId || session.expiresAt <= new Date()) throw new Error('Invalid session')
     const jti = randomBytes(16).toString('hex')
-    const payload: AccessTokenPayload = { sub: userId, username, type: 'access', jti }
+    const payload: AccessTokenPayload = { sub: userId, username, type: 'access', jti, sid: session.id }
 
     return new SignJWT(payload)
       .setProtectedHeader({ alg: 'HS256' })
@@ -122,6 +125,7 @@ export class TokenService {
   async verifyPendingAuthToken(token: string): Promise<PendingAuthTokenPayload | null> {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
+        algorithms: ['HS256'],
         issuer: 'onyka',
         audience: 'onyka',
       })
@@ -135,12 +139,16 @@ export class TokenService {
   async verifyAccessToken(token: string): Promise<AccessTokenPayload | null> {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
+        algorithms: ['HS256'],
         issuer: 'onyka',
         audience: 'onyka',
       })
 
       if (payload.type !== 'access') return null
       if (typeof payload.jti !== 'string') return null
+      if (typeof payload.sid !== 'string' || typeof payload.sub !== 'string') return null
+      const session = await refreshTokenRepository.findById(payload.sid)
+      if (!session || session.userId !== payload.sub || session.expiresAt <= new Date()) return null
       if (await revokedAccessTokenRepository.isRevoked(payload.jti)) return null
 
       return payload as unknown as AccessTokenPayload
@@ -160,6 +168,7 @@ export class TokenService {
   private async decodeAccessToken(token: string): Promise<AccessTokenPayload | null> {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
+        algorithms: ['HS256'],
         issuer: 'onyka',
         audience: 'onyka',
       })
@@ -173,6 +182,7 @@ export class TokenService {
   async verifyRefreshToken(token: string): Promise<RefreshTokenPayload | null> {
     try {
       const { payload } = await jwtVerify(token, this.secret, {
+        algorithms: ['HS256'],
         issuer: 'onyka',
         audience: 'onyka',
       })
@@ -195,6 +205,8 @@ export class TokenService {
   }
 
   async revokeAllUserTokens(userId: string): Promise<number> {
+    await trustedDeviceRepository.deleteAllByUser(userId)
+    await twoFactorRepository.deleteAllForUser(userId)
     return refreshTokenRepository.deleteByUser(userId)
   }
 
@@ -204,12 +216,16 @@ export class TokenService {
   }
 
   async rotateRefreshToken(oldToken: string, userId: string, metadata?: SessionMetadata): Promise<string | null> {
-    const revoked = await this.revokeRefreshToken(oldToken)
-    if (!revoked) {
-      await this.revokeAllUserTokens(userId)
-      return null
-    }
-    return this.generateRefreshToken(userId, undefined, metadata)
+    const oldHash = this.hashToken(oldToken)
+    const session = await refreshTokenRepository.findByTokenHash(oldHash)
+    if (!session || session.userId !== userId || session.expiresAt <= new Date()) return null
+    const payload: RefreshTokenPayload = { sub: userId, type: 'refresh', jti: randomBytes(32).toString('hex') }
+    const token = await new SignJWT(payload).setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt().setExpirationTime(session.expiresAt).setIssuer('onyka').setAudience('onyka').sign(this.secret)
+    // Two tabs refreshing the same cookie are a normal race. Losing the atomic
+    // rotation must not invalidate unrelated sessions or extend a one-day login.
+    if (!await refreshTokenRepository.rotate(oldHash, this.hashToken(token), metadata)) return null
+    return token
   }
 
   async listUserSessions(userId: string): Promise<SessionInfo[]> {

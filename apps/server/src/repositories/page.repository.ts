@@ -74,7 +74,10 @@ export class PageRepository {
     if (input.content !== undefined) updateData.content = encrypt(input.content)
     if (input.isLocked !== undefined) updateData.isLocked = input.isLocked
 
-    await db.update(notePages).set(updateData).where(eq(notePages.id, id))
+    const conditions = [eq(notePages.id, id), eq(notePages.isDeleted, false)]
+    if (input.title !== undefined || input.content !== undefined) conditions.push(eq(notePages.isLocked, false))
+    const result = await db.update(notePages).set(updateData).where(and(...conditions))
+    if (result.changes === 0) return null
     return this.findById(id)
   }
 

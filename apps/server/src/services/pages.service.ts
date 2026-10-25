@@ -26,7 +26,7 @@ export class PagesService {
 
   async getPage(pageId: string, userId: string): Promise<NotePage> {
     const page = await pageRepository.findById(pageId)
-    if (!page) {
+    if (!page || page.isDeleted) {
       throw new PagesServiceError('Page not found', 'PAGE_NOT_FOUND', 404)
     }
 
@@ -36,6 +36,9 @@ export class PagesService {
 
   async createPage(noteId: string, userId: string, input: NotePageCreateInput): Promise<NotePage> {
     await this.verifyNoteAccess(noteId, userId, 'edit')
+    if (input.content !== undefined && !await noteUploadRepository.canReferenceUploads(userId, input.content)) {
+      throw new PagesServiceError('Access denied to an attached file', 'UPLOAD_ACCESS_DENIED', 403)
+    }
 
     const pageCount = await pageRepository.countByNote(noteId)
     const title = input.title ?? `Page ${pageCount + 1}`
@@ -49,11 +52,14 @@ export class PagesService {
 
   async updatePage(pageId: string, userId: string, input: NotePageUpdateInput): Promise<NotePage> {
     const page = await pageRepository.findById(pageId)
-    if (!page) {
+    if (!page || page.isDeleted) {
       throw new PagesServiceError('Page not found', 'PAGE_NOT_FOUND', 404)
     }
 
     const note = await this.verifyNoteAccess(page.noteId, userId, 'edit')
+    if (input.content !== undefined && !await noteUploadRepository.canReferenceUploads(userId, input.content)) {
+      throw new PagesServiceError('Access denied to an attached file', 'UPLOAD_ACCESS_DENIED', 403)
+    }
 
     const writesContent = input.title !== undefined || input.content !== undefined
     if (page.isLocked && writesContent) {
@@ -79,6 +85,10 @@ export class PagesService {
 
     const updated = await pageRepository.update(pageId, input)
     if (!updated) {
+      const current = await pageRepository.findById(pageId)
+      if (current?.isLocked && writesContent) {
+        throw new PagesServiceError('Page is locked', 'PAGE_LOCKED', 423)
+      }
       throw new PagesServiceError('Failed to update page', 'UPDATE_FAILED', 500)
     }
 
@@ -91,7 +101,7 @@ export class PagesService {
 
   async deletePage(pageId: string, userId: string): Promise<void> {
     const page = await pageRepository.findById(pageId)
-    if (!page) {
+    if (!page || page.isDeleted) {
       throw new PagesServiceError('Page not found', 'PAGE_NOT_FOUND', 404)
     }
 
@@ -108,7 +118,7 @@ export class PagesService {
 
   async reorderPage(pageId: string, userId: string, newPosition: number): Promise<NotePage> {
     const page = await pageRepository.findById(pageId)
-    if (!page) {
+    if (!page || page.isDeleted) {
       throw new PagesServiceError('Page not found', 'PAGE_NOT_FOUND', 404)
     }
 
@@ -142,7 +152,7 @@ export class PagesService {
   ): Promise<{ ownerId: string }> {
     const note = await noteRepository.findById(noteId)
 
-    if (!note) {
+    if (!note || note.isDeleted) {
       throw new PagesServiceError('Note not found', 'NOTE_NOT_FOUND', 404)
     }
 

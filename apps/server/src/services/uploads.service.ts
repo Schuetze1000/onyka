@@ -1,14 +1,16 @@
 import { existsSync, mkdirSync, unlinkSync, statSync, readFileSync, writeFileSync } from 'fs'
-import { join, extname } from 'path'
+import { join, extname, dirname, resolve } from 'path'
 import { nanoid } from 'nanoid'
 import { eq, sql } from 'drizzle-orm'
 import { fileTypeFromBuffer } from 'file-type'
 import { db } from '../db/index.js'
 import { uploads } from '../db/schema.js'
+import { users } from '../db/schema.js'
+import { env } from '../config/env.js'
 import { encryptBuffer, decryptBuffer } from '../utils/crypto.js'
 
 // Upload configuration
-const UPLOADS_DIR = join(process.cwd(), 'data', 'uploads')
+const UPLOADS_DIR = join(resolve(dirname(env.DATABASE_URL.replace(/^file:/, ''))), 'uploads')
 const MAX_IMAGE_SIZE_MB = 5
 const MAX_STORAGE_PER_USER_MB = 100
 const MAX_STORAGE_PER_USER_BYTES = MAX_STORAGE_PER_USER_MB * 1024 * 1024
@@ -32,6 +34,10 @@ export interface UploadResult {
 export interface UploadError {
   code: 'INVALID_TYPE' | 'INVALID_CONTENT' | 'FILE_TOO_LARGE' | 'UPLOAD_FAILED'
   message: string
+}
+
+export class UploadQuotaError extends Error {
+  constructor() { super('Storage quota exceeded'); this.name = 'UploadQuotaError' }
 }
 
 // Map of allowed MIME types to their file-type identifiers
@@ -104,6 +110,11 @@ export async function validateFileContent(
         code: 'INVALID_CONTENT',
         message: `File content (${fileTypeResult.mime}) does not match declared type (${file.mimetype}).`,
       }
+    }
+
+    const expected = fileTypeResult.mime === 'image/jpeg' ? ['.jpg', '.jpeg'] : [`.${fileTypeResult.ext}`]
+    if (!expected.includes(extname(file.filename).toLowerCase())) {
+      return { code: 'INVALID_CONTENT', message: 'Image extension does not match its content.' }
     }
 
     return null
@@ -198,15 +209,29 @@ export function getMaxImageSizeBytes(): number {
  * Track an upload in the database for ownership
  */
 export async function trackUpload(file: Express.Multer.File, ownerId: string): Promise<void> {
-  await db.insert(uploads).values({
-    id: nanoid(),
-    filename: file.filename,
-    originalName: file.originalname,
-    mimeType: file.mimetype,
-    size: file.size,
-    ownerId,
-    createdAt: new Date(),
+  // Serialize the quota check with registration; parallel uploads cannot all
+  // reserve the same remaining space.
+  db.transaction(tx => {
+    const used = tx.select({ total: sql<number>`coalesce(sum(${uploads.size}), 0)` })
+      .from(uploads).where(eq(uploads.ownerId, ownerId)).get()?.total ?? 0
+    if (used + file.size > MAX_STORAGE_PER_USER_BYTES) throw new UploadQuotaError()
+    tx.insert(uploads).values({
+      id: nanoid(),
+      filename: file.filename,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      ownerId,
+      createdAt: new Date(),
+    }).run()
   })
+}
+
+export async function isUserAvatar(filename: string): Promise<boolean> {
+  if (!filename.startsWith('avatar-')) return false
+  const result = await db.select({ id: users.id }).from(users)
+    .where(eq(users.avatarUrl, `/api/uploads/${filename}`)).limit(1)
+  return result.length > 0
 }
 
 /**

@@ -14,6 +14,22 @@ export interface PasswordResetToken {
 }
 
 export class PasswordResetRepository {
+  async consumeAndResetPassword(tokenHash: string, passwordHash: string): Promise<boolean> {
+    return db.transaction((tx) => {
+      const now = new Date()
+      const token = tx.select().from(passwordResetTokens).where(and(
+        eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt), gt(passwordResetTokens.expiresAt, now)
+      )).get()
+      if (!token) return false
+      tx.update(schema.users).set({ passwordHash, updatedAt: now }).where(eq(schema.users.id, token.userId)).run()
+      tx.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.userId, token.userId)).run()
+      tx.delete(schema.refreshTokens).where(eq(schema.refreshTokens.userId, token.userId)).run()
+      tx.delete(schema.trustedDevices).where(eq(schema.trustedDevices.userId, token.userId)).run()
+      tx.delete(schema.emailOtpCodes).where(eq(schema.emailOtpCodes.userId, token.userId)).run()
+      return true
+    })
+  }
+
   async create(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
     const now = new Date()
     const id = nanoid()

@@ -53,6 +53,11 @@ describe('Inherited folder permissions through the production repository', () =>
     expect(await shareRepository.hasAccessToUpload('reader', 'image.png')).toBe(false)
     expect(await shareRepository.hasAccess('reader', 'a', 'note')).toBe(true)
   })
+  it('hides deleted notes for both direct and inherited grants', async () => {
+    rawDb.exec("INSERT INTO shares VALUES ('direct','b','note','owner','reader','admin',1234); UPDATE notes SET is_deleted=1 WHERE id='b'")
+    expect(await shareRepository.hasAccess('reader', 'b', 'note')).toBe(false)
+    expect((await shareRepository.findEffectiveBySharedWith('reader')).some(grant => grant.resourceId === 'b')).toBe(false)
+  })
   it('uses the strongest grant and preserves independent direct shares after revocation', async () => {
     rawDb.exec("INSERT INTO shares VALUES ('direct','b','note','owner','reader','admin',1234)")
     expect(await shareRepository.getEffectivePermission('reader', 'b', 'note')).toBe('admin')

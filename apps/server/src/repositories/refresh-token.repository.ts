@@ -1,4 +1,4 @@
-import { eq, lt, and, ne } from 'drizzle-orm'
+import { eq, lt, and, ne, gt } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 import { db, schema } from '../db/index.js'
 
@@ -23,6 +23,14 @@ export interface SessionInfo {
 }
 
 export class RefreshTokenRepository {
+  /** Rotate credentials atomically while keeping the session ID and original lifetime. */
+  async rotate(oldHash: string, newHash: string, metadata?: { userAgent?: string; ipAddress?: string }): Promise<boolean> {
+    const result = await db.update(refreshTokens).set({ tokenHash: newHash,
+      ...(metadata?.userAgent !== undefined ? { userAgent: metadata.userAgent } : {}),
+      ...(metadata?.ipAddress !== undefined ? { ipAddress: metadata.ipAddress } : {}),
+    }).where(and(eq(refreshTokens.tokenHash, oldHash), gt(refreshTokens.expiresAt, new Date())))
+    return result.changes === 1
+  }
   async findById(id: string): Promise<RefreshToken | null> {
     const result = await db
       .select()

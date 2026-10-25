@@ -321,6 +321,7 @@
       "xl": "Extra large",
       "xxl": "Maximum"
     },
+    "typography": "Typography",
     "font_family": "Font",
     "font_family_desc": "Font family in the editor",
     "account": "Account",
